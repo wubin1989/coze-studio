@@ -130,18 +130,6 @@ func (r *replyChunkCallback) OnStart(ctx context.Context, info *callbacks.RunInf
 func (r *replyChunkCallback) OnEnd(ctx context.Context, info *callbacks.RunInfo, output callbacks.CallbackOutput) context.Context {
 	logs.CtxInfof(ctx, "info-OnEnd, info=%v, output=%v", conv.DebugJsonToStr(info), conv.DebugJsonToStr(output))
 	switch info.Name {
-
-	case keyOfReActAgent:
-		if info.Component == compose.ComponentOfGraph {
-			redirectToolMsg := convToolsNodeCallbackOutputMessage(output)
-			if redirectToolMsg != nil && redirectToolMsg.Role == schema.Tool {
-				sr := schema.StreamReaderFromArray([]*schema.Message{redirectToolMsg})
-				r.sw.Send(&entity.AgentEvent{
-					EventType:       singleagent.EventTypeOfChatModelAnswer,
-					ChatModelAnswer: sr,
-				}, nil)
-			}
-		}
 	case keyOfKnowledgeRetriever:
 		knowledgeEvent := &entity.AgentEvent{
 			EventType: singleagent.EventTypeOfKnowledge,
@@ -199,15 +187,8 @@ func (r *replyChunkCallback) OnEndWithStreamOutput(ctx context.Context, info *ca
 	switch info.Component {
 	case compose.ComponentOfGraph, components.ComponentOfChatModel:
 		if info.Name == keyOfReActAgent {
-			redirectToolMsg := convToolsNodeCallbackOutputWithStream(output)
-			if len(redirectToolMsg) > 0 {
-				sr := schema.StreamReaderFromArray(redirectToolMsg)
-				r.sw.Send(&entity.AgentEvent{
-					EventType:       singleagent.EventTypeOfChatModelAnswer,
-					ChatModelAnswer: sr,
-				}, nil)
-				return ctx
-			}
+			r.processToolsReturnDirectlyStreamWithLazyInit(ctx, output)
+			return ctx
 		}
 
 		if info.Name != keyOfReActAgentChatModel && info.Name != keyOfLLM {
@@ -310,7 +291,7 @@ func concatToolsNodeOutput(ctx context.Context, output *schema.StreamReader[call
 		msgs := convToolsNodeCallbackOutput(cbOut)
 
 		for _, msg := range msgs {
-			if msg == nil || msg.ToolCallID == "" {
+			if msg == nil {
 				continue
 			}
 
@@ -359,26 +340,46 @@ func convToolsNodeCallbackOutputMessage(output callbacks.CallbackOutput) *schema
 	}
 }
 
-func convToolsNodeCallbackOutputWithStream(output *schema.StreamReader[callbacks.CallbackOutput]) []*schema.Message {
-
-	var redirectToolMsg []*schema.Message
+func (r *replyChunkCallback) processToolsReturnDirectlyStreamWithLazyInit(_ context.Context, output *schema.StreamReader[callbacks.CallbackOutput]) {
+	var streamInitialized bool
+	var sr *schema.StreamReader[*schema.Message]
+	var sw *schema.StreamWriter[*schema.Message]
 
 	for {
 		cbOut, err := output.Recv()
 		if errors.Is(err, io.EOF) {
+			if sw != nil {
+				sw.Close()
+			}
 			break
 		}
-
 		if err != nil {
-			return nil
+			if sw != nil {
+				sw.Send(nil, err)
+				sw.Close()
+			}
+			break
 		}
-
 		msg := convToolsNodeCallbackOutputMessage(cbOut)
-		if msg != nil && msg.Role == schema.Tool {
-			redirectToolMsg = append(redirectToolMsg, msg)
+
+		if msg == nil {
+			break
+		}
+		if msg.Role != schema.Tool {
+			break
+		}
+		if msg.Role == schema.Tool {
+			if !streamInitialized {
+				sr, sw = schema.Pipe[*schema.Message](5)
+				r.sw.Send(&entity.AgentEvent{
+					EventType:       singleagent.EventTypeOfChatModelAnswer,
+					ChatModelAnswer: sr,
+				}, nil)
+				streamInitialized = true
+			}
+			sw.Send(msg, nil)
 		}
 	}
-	return redirectToolMsg
 }
 
 func convToolsNodeCallbackOutput(output callbacks.CallbackOutput) []*schema.Message {
