@@ -496,7 +496,7 @@ func (w *WorkflowHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 		return ctx
 	}
 
-	go func() {
+	safego.Go(ctx, func() {
 		defer output.Close()
 		fullOutput := make(map[string]any)
 		for {
@@ -538,7 +538,7 @@ func (w *WorkflowHandler) OnEndWithStreamOutput(ctx context.Context, info *callb
 			}
 		}
 		w.ch <- e
-	}()
+	})
 
 	return ctx
 }
