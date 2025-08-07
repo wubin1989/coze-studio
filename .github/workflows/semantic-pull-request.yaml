@@ -53,6 +53,7 @@ jobs:
             prompt
             knowledge
             plugin
+            security
             middleware
             model
             database
