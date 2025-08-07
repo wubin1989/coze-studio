@@ -154,7 +154,7 @@ export const getCommentPatterns = (
       multiEnd: /\*\//g,
     },
     markdown: {
-      single: /<!--(.*)-->/g,
+      single: /<!--([^<>]*)-->/g,
       multiStart: /<!--/g,
       multiEnd: /-->/g,
     },
