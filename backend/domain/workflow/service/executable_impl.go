@@ -25,7 +25,9 @@ import (
 	einoCompose "github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 
+	workflow1 "github.com/coze-dev/coze-studio/backend/api/model/workflow"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow"
+	"github.com/coze-dev/coze-studio/backend/domain/workflow/crossdomain/conversation"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/entity/vo"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/internal/canvas/adaptor"
@@ -60,6 +62,8 @@ func (i *impl) SyncExecute(ctx context.Context, config vo.ExecuteConfig, input m
 	if err != nil {
 		return nil, "", err
 	}
+
+	config.WorkflowMode = wfEntity.Mode
 
 	isApplicationWorkflow := wfEntity.AppID != nil
 	if isApplicationWorkflow && config.Mode == vo.ExecuteModeRelease {
@@ -206,6 +210,8 @@ func (i *impl) AsyncExecute(ctx context.Context, config vo.ExecuteConfig, input 
 		return 0, err
 	}
 
+	config.WorkflowMode = wfEntity.Mode
+
 	isApplicationWorkflow := wfEntity.AppID != nil
 	if isApplicationWorkflow && config.Mode == vo.ExecuteModeRelease {
 		err = i.checkApplicationWorkflowReleaseVersion(ctx, *wfEntity.AppID, config.ConnectorID, config.ID, config.Version)
@@ -291,11 +297,30 @@ func (i *impl) AsyncExecuteNode(ctx context.Context, nodeID string, config vo.Ex
 		return 0, err
 	}
 
+	config.WorkflowMode = wfEntity.Mode
+
 	isApplicationWorkflow := wfEntity.AppID != nil
 	if isApplicationWorkflow && config.Mode == vo.ExecuteModeRelease {
 		err = i.checkApplicationWorkflowReleaseVersion(ctx, *wfEntity.AppID, config.ConnectorID, config.ID, config.Version)
 		if err != nil {
 			return 0, err
+		}
+	}
+
+	historyRounds := int64(0)
+	if config.WorkflowMode == workflow1.WorkflowMode_ChatFlow {
+		historyRounds, err = getHistoryRoundsFromNode(ctx, wfEntity, nodeID, i.repo)
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	if historyRounds > 0 {
+		messages, err := i.prefetchChatHistory(ctx, config, historyRounds)
+		if err != nil {
+			logs.CtxErrorf(ctx, "failed to prefetch chat history: %v", err)
+		} else if len(messages) > 0 {
+			config.ConversationHistory = messages
 		}
 	}
 
@@ -374,11 +399,30 @@ func (i *impl) StreamExecute(ctx context.Context, config vo.ExecuteConfig, input
 		return nil, err
 	}
 
+	config.WorkflowMode = wfEntity.Mode
+
 	isApplicationWorkflow := wfEntity.AppID != nil
 	if isApplicationWorkflow && config.Mode == vo.ExecuteModeRelease {
 		err = i.checkApplicationWorkflowReleaseVersion(ctx, *wfEntity.AppID, config.ConnectorID, config.ID, config.Version)
 		if err != nil {
 			return nil, err
+		}
+	}
+
+	historyRounds := int64(0)
+	if config.WorkflowMode == workflow1.WorkflowMode_ChatFlow {
+		historyRounds, err = i.calculateMaxChatHistoryRounds(ctx, wfEntity, i.repo)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if historyRounds > 0 {
+		messages, err := i.prefetchChatHistory(ctx, config, historyRounds)
+		if err != nil {
+			logs.CtxErrorf(ctx, "failed to prefetch chat history: %v", err)
+		} else if len(messages) > 0 {
+			config.ConversationHistory = messages
 		}
 	}
 
@@ -717,6 +761,7 @@ func (i *impl) AsyncResume(ctx context.Context, req *entity.ResumeRequest, confi
 	config.AppID = wfExe.AppID
 	config.AgentID = wfExe.AgentID
 	config.CommitID = wfExe.CommitID
+	config.WorkflowMode = wfEntity.Mode
 
 	if config.ConnectorID == 0 {
 		config.ConnectorID = wfExe.ConnectorID
@@ -858,6 +903,7 @@ func (i *impl) StreamResume(ctx context.Context, req *entity.ResumeRequest, conf
 	config.AppID = wfExe.AppID
 	config.AgentID = wfExe.AgentID
 	config.CommitID = wfExe.CommitID
+	config.WorkflowMode = wfEntity.Mode
 
 	if config.ConnectorID == 0 {
 		config.ConnectorID = wfExe.ConnectorID
@@ -935,4 +981,73 @@ func (i *impl) checkApplicationWorkflowReleaseVersion(ctx context.Context, appID
 	}
 
 	return nil
+}
+
+const maxHistoryRounds int64 = 30
+
+func (i *impl) calculateMaxChatHistoryRounds(ctx context.Context, wfEntity *entity.Workflow, repo workflow.Repository) (int64, error) {
+	if wfEntity == nil {
+		return 0, nil
+	}
+
+	maxRounds, err := getMaxHistoryRoundsRecursively(ctx, wfEntity, repo)
+	if err != nil {
+		return 0, err
+	}
+	return min(maxRounds, maxHistoryRounds), nil
+}
+
+func (i *impl) prefetchChatHistory(ctx context.Context, config vo.ExecuteConfig, historyRounds int64) ([]*conversation.Message, error) {
+	convID := config.ConversationID
+	agentID := config.AgentID
+	appID := config.AppID
+	userID := config.Operator
+
+	if convID == nil || *convID == 0 {
+		logs.CtxWarnf(ctx, "ConversationID is 0 or nil, skipping chat history")
+		return nil, nil
+	}
+
+	var resolvedAppID int64
+	if appID != nil {
+		resolvedAppID = *appID
+	} else if agentID != nil {
+		resolvedAppID = *agentID
+	} else {
+		logs.CtxWarnf(ctx, "AppID and AgentID are both nil, skipping chat history")
+		return nil, nil
+	}
+
+	runIdsReq := &conversation.GetLatestRunIDsRequest{
+		ConversationID: *convID,
+		AppID:          resolvedAppID,
+		UserID:         userID,
+		Rounds:         historyRounds,
+	}
+
+	manager := conversation.GetConversationManager()
+	if manager == nil {
+		logs.CtxWarnf(ctx, "ConversationManager is nil, skipping chat history")
+		return nil, nil
+	}
+
+	runIds, err := manager.GetLatestRunIDs(ctx, runIdsReq)
+	if err != nil {
+		logs.CtxErrorf(ctx, "failed to get latest run ids: %v", err)
+		return nil, nil
+	}
+	if len(runIds) <= 1 {
+		return []*conversation.Message{}, nil
+	}
+	runIds = runIds[1:]
+
+	response, err := manager.GetMessagesByRunIDs(ctx, &conversation.GetMessagesByRunIDsRequest{
+		ConversationID: *convID,
+		RunIDs:         runIds,
+	})
+	if err != nil {
+		logs.CtxErrorf(ctx, "failed to get messages by run ids: %v", err)
+		return nil, nil
+	}
+	return response.Messages, nil
 }
