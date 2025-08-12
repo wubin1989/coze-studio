@@ -28,4 +28,6 @@ type Run interface {
 	AgentRun(ctx context.Context, req *entity.AgentRunMeta) (*schema.StreamReader[*entity.AgentRunResponse], error)
 
 	Delete(ctx context.Context, runID []int64) error
+
+	List(ctx context.Context, ListMeta *entity.ListRunRecordMeta) ([]*entity.RunRecordMeta, error)
 }

@@ -530,12 +530,19 @@ func (c *runImpl) pullWfStream(ctx context.Context, events *schema.StreamReader[
 		if st == nil {
 			continue
 		}
+		if st.StateMessage != nil && st.StateMessage.Usage != nil {
+			usage = &msgEntity.UsageExt{
+				InputTokens:  st.StateMessage.Usage.InputTokens,
+				OutputTokens: st.StateMessage.Usage.OutputTokens,
+				TotalCount:   st.StateMessage.Usage.InputTokens + st.StateMessage.Usage.OutputTokens,
+			}
+			logs.CtxInfof(ctx, "pullWfStream usage:%v,err:%v", conv.DebugJsonToStr(usage), re)
+		}
 
 		if st.StateMessage != nil && st.StateMessage.InterruptEvent != nil { // interrupt
 			c.handlerWfInterruptMsg(ctx, sw, st.StateMessage, rtDependence)
 			continue
 		}
-
 		if st.DataMessage == nil {
 			continue
 		}
@@ -555,13 +562,7 @@ func (c *runImpl) pullWfStream(ctx context.Context, events *schema.StreamReader[
 				}
 				preMsgIsFinish = false
 			}
-			if st.DataMessage.Usage != nil {
-				usage = &msgEntity.UsageExt{
-					InputTokens:  st.DataMessage.Usage.InputTokens,
-					OutputTokens: st.DataMessage.Usage.OutputTokens,
-					TotalCount:   st.DataMessage.Usage.InputTokens + st.DataMessage.Usage.OutputTokens,
-				}
-			}
+
 			if st.DataMessage.Last {
 				preMsgIsFinish = true
 				sendAnswerMsg := c.buildSendMsg(ctx, preAnswerMsg, false, rtDependence)
@@ -1461,4 +1462,8 @@ func (c *runImpl) buildSendRunRecord(_ context.Context, runRecord *entity.RunRec
 
 func (c *runImpl) Delete(ctx context.Context, runID []int64) error {
 	return c.RunRecordRepo.Delete(ctx, runID)
+}
+
+func (c *runImpl) List(ctx context.Context, meta *entity.ListRunRecordMeta) ([]*entity.RunRecordMeta, error) {
+	return c.RunRecordRepo.List(ctx, meta)
 }
