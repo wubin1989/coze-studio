@@ -17,6 +17,7 @@ type APIKey struct {
 	CreatedAt  int64  `gorm:"column:created_at;not null;autoCreateTime:milli;comment:Create Time in Milliseconds" json:"created_at"` // Create Time in Milliseconds
 	UpdatedAt  int64  `gorm:"column:updated_at;not null;autoUpdateTime:milli;comment:Update Time in Milliseconds" json:"updated_at"` // Update Time in Milliseconds
 	LastUsedAt int64  `gorm:"column:last_used_at;not null;comment:Used Time in Milliseconds" json:"last_used_at"`                    // Used Time in Milliseconds
+	AkType     int32  `gorm:"column:ak_type;not null;comment:api key type" json:"ak_type"`                                           // api key type
 }
 
 // TableName APIKey's table name
