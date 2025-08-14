@@ -1496,3 +1496,7 @@ func (c *runImpl) Delete(ctx context.Context, runID []int64) error {
 func (c *runImpl) List(ctx context.Context, meta *entity.ListRunRecordMeta) ([]*entity.RunRecordMeta, error) {
 	return c.RunRecordRepo.List(ctx, meta)
 }
+
+func (c *runImpl) Create(ctx context.Context, runRecord *entity.AgentRunMeta) (*entity.RunRecordMeta, error) {
+	return c.RunRecordRepo.Create(ctx, runRecord)
+}
