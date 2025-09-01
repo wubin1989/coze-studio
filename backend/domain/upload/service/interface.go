@@ -27,6 +27,7 @@ type UploadService interface {
 	UploadFiles(ctx context.Context, req *UploadFilesRequest) (resp *UploadFilesResponse, err error)
 	GetFiles(ctx context.Context, req *GetFilesRequest) (resp *GetFilesResponse, err error)
 	GetFile(ctx context.Context, req *GetFileRequest) (resp *GetFileResponse, err error)
+	GetFileTagging(ctx context.Context, req *GetFileTaggingRequest) (resp *GetFileTaggingResponse, err error)
 }
 
 type UploadFileRequest struct {
@@ -57,4 +58,11 @@ type GetFileRequest struct {
 
 type GetFileResponse struct {
 	File *entity.File `json:"file"`
+}
+
+type GetFileTaggingRequest struct {
+	FileURI string `json:"file_uri"`
+}
+type GetFileTaggingResponse struct {
+	Tagging map[string]string `json:"tagging"`
 }

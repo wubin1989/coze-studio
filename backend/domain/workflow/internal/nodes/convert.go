@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -166,10 +167,24 @@ func convert(ctx context.Context, in any, path string, t *vo.TypeInfo, options *
 	if in == nil { // nil is valid for ALL types
 		return nil, nil, nil
 	}
-
 	switch t.Type {
-	case vo.DataTypeString, vo.DataTypeFile, vo.DataTypeTime:
+	case vo.DataTypeString, vo.DataTypeTime:
 		return convertToString(ctx, in, path, options)
+	case vo.DataTypeFile:
+		ret, warns, err := convertToString(ctx, in, path, options)
+		if err != nil {
+			return nil, nil, err
+		}
+		if warns != nil {
+			return ret, warns, nil
+		}
+
+		fileURL, err := adaptorFileURL(ret.(string))
+		if err != nil {
+			return nil, nil, err
+		}
+		return fileURL, nil, nil
+
 	case vo.DataTypeInteger:
 		return convertToInt64(ctx, in, path, options)
 	case vo.DataTypeNumber:
@@ -215,7 +230,16 @@ func convertToString(_ context.Context, in any, path string, options *convertOpt
 		return nil, newWarnings(path, vo.DataTypeString, fmt.Errorf("unsupported type to convert to string: %T", in)), nil
 	}
 }
-
+func adaptorFileURL(in string) (string, error) {
+	u, err := url.Parse(in)
+	if err != nil {
+		return "", err
+	}
+	query := u.Query()
+	query.Del("x-wf-file_name")
+	u.RawQuery = query.Encode()
+	return u.String(), nil
+}
 func convertToInt64(_ context.Context, in any, path string, options *convertOptions) (any, *ConversionWarnings, error) {
 	switch in.(type) {
 	case int64:

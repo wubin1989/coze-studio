@@ -71,6 +71,21 @@ func (mr *MockStorageMockRecorder) GetObject(ctx, objectKey any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObject", reflect.TypeOf((*MockStorage)(nil).GetObject), ctx, objectKey)
 }
 
+// GetObjectTagging mocks base method.
+func (m *MockStorage) GetObjectTagging(ctx context.Context, objectKey string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetObjectTagging", ctx, objectKey)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetObjectTagging indicates an expected call of GetObjectTagging.
+func (mr *MockStorageMockRecorder) GetObjectTagging(ctx, objectKey any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetObjectTagging", reflect.TypeOf((*MockStorage)(nil).GetObjectTagging), ctx, objectKey)
+}
+
 // GetObjectUrl mocks base method.
 func (m *MockStorage) GetObjectUrl(ctx context.Context, objectKey string, opts ...storage.GetOptFn) (string, error) {
 	m.ctrl.T.Helper()

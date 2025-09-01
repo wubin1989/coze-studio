@@ -26,6 +26,7 @@ var defaultSVC Uploader
 
 type Uploader interface {
 	GetFile(ctx context.Context, req *service.GetFileRequest) (resp *service.GetFileResponse, err error)
+	GetFileTagging(ctx context.Context, req *service.GetFileTaggingRequest) (resp *service.GetFileTaggingResponse, err error)
 }
 
 func SetDefaultSVC(s Uploader) {

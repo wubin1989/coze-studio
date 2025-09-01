@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"io"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/coze-dev/coze-studio/backend/pkg/lang/slices"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/storage"
 	"github.com/coze-dev/coze-studio/backend/infra/impl/storage/internal/fileutil"
@@ -151,7 +153,6 @@ func (t *s3Client) PutObject(ctx context.Context, objectKey string, content []by
 func (t *s3Client) PutObjectWithReader(ctx context.Context, objectKey string, content io.Reader, opts ...storage.PutOptFn) error {
 	client := t.client
 	bucket := t.bucketName
-
 	option := storage.PutOption{}
 	for _, opt := range opts {
 		opt(&option)
@@ -439,4 +440,17 @@ func tagsToMap(tags []types.Tag) map[string]string {
 		}
 	}
 	return m
+}
+
+func (t *s3Client) GetObjectTagging(ctx context.Context, objectKey string) (map[string]string, error) {
+	response, err := t.client.GetObjectTagging(ctx, &s3.GetObjectTaggingInput{
+		Bucket: aws.String(t.bucketName),
+		Key:    aws.String(objectKey),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return slices.ToMap(response.TagSet, func(e types.Tag) (string, string) {
+		return *e.Key, *e.Value
+	}), err
 }

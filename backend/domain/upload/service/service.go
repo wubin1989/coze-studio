@@ -95,3 +95,14 @@ func (u *uploadSVC) GetFile(ctx context.Context, req *GetFileRequest) (resp *Get
 	}
 	return
 }
+
+func (u *uploadSVC) GetFileTagging(ctx context.Context, req *GetFileTaggingRequest) (resp *GetFileTaggingResponse, err error) {
+	tagging, err := u.oss.GetObjectTagging(ctx, req.FileURI)
+	if err != nil {
+		return nil, errorx.WrapByCode(err, errno.ErrUploadSystemErrorCode)
+	}
+	return &GetFileTaggingResponse{
+		Tagging: tagging,
+	}, nil
+
+}

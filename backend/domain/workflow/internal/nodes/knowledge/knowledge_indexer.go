@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"net/url"
 	"path/filepath"
 	"strings"
@@ -28,12 +29,15 @@ import (
 
 	"github.com/coze-dev/coze-studio/backend/api/model/crossdomain/knowledge"
 	crossknowledge "github.com/coze-dev/coze-studio/backend/crossdomain/contract/knowledge"
+	crossupload "github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload"
+	"github.com/coze-dev/coze-studio/backend/domain/upload/service"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/entity/vo"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/internal/canvas/convert"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/internal/nodes"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/internal/schema"
 	"github.com/coze-dev/coze-studio/backend/infra/contract/document/parser"
+	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 )
 
 type IndexerConfig struct {
@@ -125,7 +129,7 @@ func (k *Indexer) Invoke(ctx context.Context, input map[string]any) (map[string]
 		return nil, errors.New("knowledge is required")
 	}
 
-	fileName, ext, err := parseToFileNameAndFileExtension(fileURL)
+	fileName, ext, err := parseToFileNameAndFileExtension(ctx, fileURL)
 
 	if err != nil {
 		return nil, err
@@ -153,23 +157,49 @@ func (k *Indexer) Invoke(ctx context.Context, input map[string]any) (map[string]
 	return result, nil
 }
 
-func parseToFileNameAndFileExtension(fileURL string) (string, parser.FileExtension, error) {
-
+func parseToFileNameAndFileExtension(ctx context.Context, fileURL string) (string, parser.FileExtension, error) {
 	u, err := url.Parse(fileURL)
 	if err != nil {
 		return "", "", err
 	}
+	uris := make([]string, 0)
+	ap := false
+	for _, path := range strings.Split(u.Path, "/") {
+		if path == "tos-cn-i-v4nquku3lp" {
+			ap = true
+		}
+		if ap {
+			uris = append(uris, path)
+		}
+	}
+	fileURI := strings.Join(uris, "/")
+	response, err := crossupload.DefaultSVC().GetFileTagging(context.Background(), &service.GetFileTaggingRequest{
+		FileURI: fileURI,
+	})
 
-	fileName := u.Query().Get("x-wf-file_name")
-	if len(fileName) == 0 {
-		return "", "", errors.New("file name is required")
+	if err != nil {
+		logs.CtxWarnf(ctx, "GetFileTagging failed for uri %s", fileURI)
+		fileExt := strings.ToLower(strings.TrimPrefix(filepath.Ext(fileURI), "."))
+		ext, support := parser.ValidateFileExtension(fileExt)
+		if !support {
+			return "", "", fmt.Errorf("unsupported file type: %s", fileExt)
+		}
+		return fileURI, ext, nil
 	}
 
-	fileExt := strings.ToLower(strings.TrimPrefix(filepath.Ext(fileName), "."))
+	filename, ok := response.Tagging["filename"]
+	if !ok {
+		return "", "", fmt.Errorf("failed to get file tagging filename")
+	}
+
+	fileExt, ok := response.Tagging["file_ext"]
+	if !ok {
+		return "", "", fmt.Errorf("failed to get file tagging file_ext")
+	}
 
 	ext, support := parser.ValidateFileExtension(fileExt)
 	if !support {
 		return "", "", fmt.Errorf("unsupported file type: %s", fileExt)
 	}
-	return fileName, ext, nil
+	return filename, ext, nil
 }

@@ -40,3 +40,6 @@ func InitDomainService(c service.UploadService) crossupload.Uploader {
 func (c *impl) GetFile(ctx context.Context, req *service.GetFileRequest) (resp *service.GetFileResponse, err error) {
 	return c.DomainSVC.GetFile(ctx, req)
 }
+func (c *impl) GetFileTagging(ctx context.Context, req *service.GetFileTaggingRequest) (resp *service.GetFileTaggingResponse, err error) {
+	return c.DomainSVC.GetFileTagging(ctx, req)
+}

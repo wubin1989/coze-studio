@@ -88,7 +88,20 @@ struct ApplyUploadActionResponse {
     1: required ResponseMetadata ResponseMetadata,
     2: required ApplyUploadActionResult Result
 }
+struct RecordFileInfoRequest {
+    1:  required string FileURI
+    2:  required string FileName
+    3:  optional string FileSize
+    4:  optional string FileExtension
+}
+
+struct RecordFileInfoResponse {
+
+}
+
+
 service UploadService {
     CommonUploadResponse CommonUpload(1: CommonUploadRequest request)(api.post = '/api/common/upload/*tos_uri', api.category="upload", api.gen_path="upload")
     ApplyUploadActionResponse ApplyUploadAction(1: ApplyUploadActionRequest request)(api.get='/api/common/upload/apply_upload_action', api.post='/api/common/upload/apply_upload_action', api.category="common", api.gen_path="common")
+    RecordFileInfoResponse RecordFileInfo(1: RecordFileInfoRequest request)( api.post='/api/common/record_file_info', api.category="common", api.gen_path="common")
 }

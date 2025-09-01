@@ -1570,3 +1570,8 @@ func _getonlineappdataMw() []app.HandlerFunc {
 	// your code...
 	return nil
 }
+
+func _recordfileinfoMw() []app.HandlerFunc {
+	// your code...
+	return nil
+}

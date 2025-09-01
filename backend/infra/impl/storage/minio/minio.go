@@ -20,6 +20,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+
 	"io"
 	"math/rand"
 	"net/url"
@@ -347,4 +348,12 @@ func (m *minioClient) HeadObject(ctx context.Context, objectKey string, opts ...
 	}
 
 	return f, nil
+}
+
+func (m *minioClient) GetObjectTagging(ctx context.Context, objectKey string) (map[string]string, error) {
+	response, err := m.client.GetObjectTagging(ctx, m.bucketName, objectKey, minio.GetObjectTaggingOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("GetObjectTagging failed: %v", err)
+	}
+	return response.ToMap(), nil
 }

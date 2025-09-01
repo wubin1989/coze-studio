@@ -42,6 +42,7 @@ func Register(r *server.Hertz) {
 		}
 		{
 			_common := _api.Group("/common", _commonMw()...)
+			_common.POST("/record_file_info", append(_recordfileinfoMw(), coze.RecordFileInfo)...)
 			{
 				_upload := _common.Group("/upload", _uploadMw()...)
 				_upload.GET("/apply_upload_action", append(_applyuploadactionMw(), coze.ApplyUploadAction)...)

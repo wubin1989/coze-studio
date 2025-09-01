@@ -30,6 +30,8 @@ type Storage interface {
 	PutObjectWithReader(ctx context.Context, objectKey string, content io.Reader, opts ...PutOptFn) error
 	// GetObject returns the object with the specified key.
 	GetObject(ctx context.Context, objectKey string) ([]byte, error)
+	// GetObjectTagging returns object tagging
+	GetObjectTagging(ctx context.Context, objectKey string) (map[string]string, error)
 	// DeleteObject deletes the object with the specified key.
 	DeleteObject(ctx context.Context, objectKey string) error
 	// GetObjectUrl returns a presigned URL for the object.
