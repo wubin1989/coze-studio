@@ -715,15 +715,18 @@ func (s *SingleAgentApplicationService) GetAgentOnlineInfo(ctx context.Context, 
 				AgentID:       ptr.Of(si.ObjectID),
 				Command:       si.ShortcutCommand,
 				Components: slices.Transform(si.Components, func(i *playground.Components) *bot_common.ShortcutCommandComponent {
-					return &bot_common.ShortcutCommandComponent{
+					sc := &bot_common.ShortcutCommandComponent{
 						Name:          i.Name,
 						Description:   i.Description,
 						Type:          i.InputType.String(),
 						ToolParameter: ptr.Of(i.Parameter),
 						Options:       i.Options,
-						DefaultValue:  ptr.Of(i.DefaultValue.Value),
 						IsHide:        i.Hide,
 					}
+					if i.DefaultValue != nil {
+						sc.DefaultValue = ptr.Of(i.DefaultValue.Value)
+					}
+					return sc
 				}),
 			}
 		})
