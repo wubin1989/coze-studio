@@ -96,7 +96,9 @@ struct RecordFileInfoRequest {
 }
 
 struct RecordFileInfoResponse {
-
+    253: required i64 code,
+    254: required string msg,
+    255: optional base.BaseResp BaseResp (api.none="true")
 }
 
 
