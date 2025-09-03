@@ -18,10 +18,6 @@ package adaptor
 
 import (
 	"context"
-	crossupload "github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload"
-	"github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload/uploadmock"
-	"github.com/coze-dev/coze-studio/backend/domain/upload/service"
-	"github.com/coze-dev/coze-studio/backend/types/consts"
 	"io"
 	"net"
 	"net/http"
@@ -49,7 +45,10 @@ import (
 	mockmodel "github.com/coze-dev/coze-studio/backend/crossdomain/contract/modelmgr/modelmock"
 	crossplugin "github.com/coze-dev/coze-studio/backend/crossdomain/contract/plugin"
 	"github.com/coze-dev/coze-studio/backend/crossdomain/contract/plugin/pluginmock"
+	crossupload "github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload"
+	"github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload/uploadmock"
 	"github.com/coze-dev/coze-studio/backend/crossdomain/impl/code"
+	"github.com/coze-dev/coze-studio/backend/domain/upload/service"
 	userentity "github.com/coze-dev/coze-studio/backend/domain/user/entity"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow"
 	"github.com/coze-dev/coze-studio/backend/domain/workflow/entity/vo"
@@ -61,6 +60,7 @@ import (
 	"github.com/coze-dev/coze-studio/backend/internal/testutil"
 	"github.com/coze-dev/coze-studio/backend/pkg/ctxcache"
 	"github.com/coze-dev/coze-studio/backend/pkg/sonic"
+	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
 
 func TestMain(m *testing.M) {

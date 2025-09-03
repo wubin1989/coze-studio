@@ -821,7 +821,8 @@ func (w *ApplicationService) adaptorInputFileFields(ctx context.Context, workflo
 		fileURI := strings.TrimPrefix(u.Path, "/opencoze")
 		tagging, err := w.TosClient.GetObjectTagging(ctx, fileURI)
 		if err != nil {
-			return "", err
+			logs.CtxWarnf(ctx, fmt.Sprintf("GetObjectTagging failed: %v", err))
+			return input, nil
 		}
 		if fName, ok := tagging["filename"]; ok {
 			query := u.Query()

@@ -194,7 +194,8 @@ func parseToFileNameAndFileExtension(ctx context.Context, fileURL string) (strin
 
 	fileExt, ok := response.Tagging["file_ext"]
 	if !ok {
-		return "", "", fmt.Errorf("failed to get file tagging file_ext")
+		logs.CtxWarnf(ctx, "failed to get file tagging file ext")
+		fileExt = strings.TrimPrefix(filepath.Ext(fileURI), ".")
 	}
 	if len(fileExt) == 0 {
 		fileExt = strings.TrimPrefix(filepath.Ext(fileURI), ".")
