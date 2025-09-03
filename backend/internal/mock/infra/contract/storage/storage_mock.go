@@ -185,6 +185,20 @@ func (mr *MockStorageMockRecorder) PutObject(ctx, objectKey, content any, opts .
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutObject", reflect.TypeOf((*MockStorage)(nil).PutObject), varargs...)
 }
 
+// PutObjectTagging mocks base method.
+func (m *MockStorage) PutObjectTagging(ctx context.Context, objectKey string, ts map[string]string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PutObjectTagging", ctx, objectKey, ts)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// PutObjectTagging indicates an expected call of PutObjectTagging.
+func (mr *MockStorageMockRecorder) PutObjectTagging(ctx, objectKey, ts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutObjectTagging", reflect.TypeOf((*MockStorage)(nil).PutObjectTagging), ctx, objectKey, ts)
+}
+
 // PutObjectWithReader mocks base method.
 func (m *MockStorage) PutObjectWithReader(ctx context.Context, objectKey string, content io.Reader, opts ...storage.PutOptFn) error {
 	m.ctrl.T.Helper()

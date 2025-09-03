@@ -196,7 +196,9 @@ func parseToFileNameAndFileExtension(ctx context.Context, fileURL string) (strin
 	if !ok {
 		return "", "", fmt.Errorf("failed to get file tagging file_ext")
 	}
-
+	if len(fileExt) == 0 {
+		fileExt = strings.TrimPrefix(filepath.Ext(fileURI), ".")
+	}
 	ext, support := parser.ValidateFileExtension(fileExt)
 	if !support {
 		return "", "", fmt.Errorf("unsupported file type: %s", fileExt)

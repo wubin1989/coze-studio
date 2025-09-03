@@ -39,7 +39,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 	"gorm.io/gorm"
@@ -289,14 +288,6 @@ func (u *UploadService) UploadFileCommon(ctx context.Context, req *upload.Common
 		return nil, errorx.New(errno.ErrUploadInvalidParamCode, errorx.KV("msg", "tos key not found"))
 	}
 	objKey := match[1]
-	fInfo, existed, err := u.getFileInfo(ctx, objKey)
-	if err != nil {
-		return nil, err
-	}
-	if !existed {
-		logs.CtxErrorf(ctx, "file uri %s not record file info frist", objKey)
-	}
-
 	if strings.Contains(fullPath, "?uploads") {
 		uploadID, err := u.PartUploadFileInit(ctx, objKey)
 		if err != nil {
@@ -337,12 +328,6 @@ func (u *UploadService) UploadFileCommon(ctx context.Context, req *upload.Common
 	contentType := getContentType(objKey)
 	if len(contentType) != 0 {
 		opts = append(opts, storage.WithContentType(contentType))
-	}
-	if fInfo != nil {
-		opts = append(opts, storage.WithTagging(map[string]string{
-			"filename": fInfo.FileName,
-			"file_ext": fInfo.FileExtension,
-		}))
 	}
 	err = u.oss.PutObject(ctx, objKey, req.ByteData, opts...)
 	if err != nil {
@@ -756,48 +741,15 @@ func (u *UploadService) CommitImageUpload(ctx context.Context, req *upload.Apply
 	return &resp, nil
 }
 
-const (
-	fileInfoFormat = "record_file_info:%s"
-)
-
-type fileInfo struct {
-	FileURI       string `json:"file_uri"`
-	FileName      string `json:"file_name"`
-	FileSize      string `json:"file_size"`
-	FileExtension string `json:"file_extension"`
-}
-
 func (u *UploadService) RecordFileInfo(ctx context.Context, req *upload.RecordFileInfoRequest) (*upload.RecordFileInfoResponse, error) {
-	fInfo := &fileInfo{
-		FileURI:       req.GetFileURI(),
-		FileName:      req.GetFileName(),
-		FileSize:      req.GetFileSize(),
-		FileExtension: req.GetFileExtension(),
-	}
-	fInfoBs, _ := sonic.Marshal(fInfo)
-	err := u.cache.Set(ctx, fmt.Sprintf(fileInfoFormat, req.GetFileURI()), fInfoBs, time.Minute*30).Err()
+	err := u.oss.PutObjectTagging(ctx, req.GetFileURI(), map[string]string{
+		"filename": req.GetFileName(),
+		"file_ext": req.GetFileExtension(),
+	})
+
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &upload.RecordFileInfoResponse{}
-	return resp, nil
-}
-
-func (u *UploadService) getFileInfo(ctx context.Context, fileURI string) (*fileInfo, bool, error) {
-	bs, err := u.cache.Get(ctx, fmt.Sprintf(fileInfoFormat, fileURI)).Bytes()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			return nil, false, nil
-		}
-		return nil, false, err
-	}
-
-	fInfo := &fileInfo{}
-	err = sonic.Unmarshal(bs, fInfo)
-	if err != nil {
-		return nil, false, err
-	}
-
-	return fInfo, true, nil
+	return &upload.RecordFileInfoResponse{}, nil
 }

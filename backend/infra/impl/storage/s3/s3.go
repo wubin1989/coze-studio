@@ -454,3 +454,25 @@ func (t *s3Client) GetObjectTagging(ctx context.Context, objectKey string) (map[
 		return *e.Key, *e.Value
 	}), err
 }
+
+func (t *s3Client) PutObjectTagging(ctx context.Context, objectKey string, ts map[string]string) error {
+	tags := make([]types.Tag, 0, len(ts))
+	for k, v := range ts {
+		tags = append(tags, types.Tag{
+			Key:   aws.String(k),
+			Value: aws.String(v),
+		})
+	}
+	_, err := t.client.PutObjectTagging(ctx, &s3.PutObjectTaggingInput{
+		Bucket: aws.String(t.bucketName),
+		Key:    aws.String(objectKey),
+		Tagging: &types.Tagging{
+			TagSet: tags,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+
+}

@@ -32,6 +32,8 @@ type Storage interface {
 	GetObject(ctx context.Context, objectKey string) ([]byte, error)
 	// GetObjectTagging returns object tagging
 	GetObjectTagging(ctx context.Context, objectKey string) (map[string]string, error)
+	// PutObjectTagging update the tag of the object in full
+	PutObjectTagging(ctx context.Context, objectKey string, ts map[string]string) error
 	// DeleteObject deletes the object with the specified key.
 	DeleteObject(ctx context.Context, objectKey string) error
 	// GetObjectUrl returns a presigned URL for the object.

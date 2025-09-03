@@ -19,6 +19,7 @@ package minio
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 
 	"io"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/tags"
 
 	"github.com/coze-dev/coze-studio/backend/infra/contract/storage"
 	"github.com/coze-dev/coze-studio/backend/infra/impl/storage/internal/fileutil"
@@ -184,8 +186,12 @@ func (m *minioClient) PutObjectWithReader(ctx context.Context, objectKey string,
 		minioOpts.Expires = *option.Expires
 	}
 
+	tagging := make(map[string]string, len(option.Tagging))
+	for k, v := range option.Tagging {
+		tagging[k] = base64.StdEncoding.EncodeToString([]byte(v))
+	}
 	if option.Tagging != nil {
-		minioOpts.UserTags = option.Tagging
+		minioOpts.UserTags = tagging
 	}
 
 	_, err := m.client.PutObject(ctx, m.bucketName, objectKey,
@@ -294,12 +300,20 @@ func (m *minioClient) ListAllObjects(ctx context.Context, prefix string, opts ..
 			return nil, object.Err
 		}
 
+		tagging := make(map[string]string, len(object.UserTags))
+		for k, v := range object.UserTags {
+			valBs, err := base64.StdEncoding.DecodeString(v)
+			if err != nil {
+				return nil, err
+			}
+			tagging[k] = string(valBs)
+		}
 		files = append(files, &storage.FileInfo{
 			Key:          object.Key,
 			LastModified: object.LastModified,
 			ETag:         object.ETag,
 			Size:         object.Size,
-			Tagging:      object.UserTags,
+			Tagging:      tagging,
 		})
 
 		logs.CtxDebugf(ctx, "key = %s, lastModified = %s, eTag = %s, size = %d, tagging = %v",
@@ -332,12 +346,11 @@ func (m *minioClient) HeadObject(ctx context.Context, objectKey string, opts ...
 	}
 
 	if option.WithTagging {
-		tags, err := m.client.GetObjectTagging(ctx, m.bucketName, objectKey, minio.GetObjectTaggingOptions{})
+		objTags, err := m.GetObjectTagging(ctx, objectKey)
 		if err != nil {
 			return nil, err
 		}
-
-		f.Tagging = tags.ToMap()
+		f.Tagging = objTags
 	}
 
 	if option.WithURL {
@@ -355,5 +368,27 @@ func (m *minioClient) GetObjectTagging(ctx context.Context, objectKey string) (m
 	if err != nil {
 		return nil, fmt.Errorf("GetObjectTagging failed: %v", err)
 	}
-	return response.ToMap(), nil
+	rst := make(map[string]string)
+	for k, v := range response.ToMap() {
+		valBs, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			return nil, fmt.Errorf("QueryUnescape failed: %v", err)
+		}
+		rst[k] = string(valBs)
+	}
+
+	return rst, nil
+}
+func (m *minioClient) PutObjectTagging(ctx context.Context, objectKey string, ts map[string]string) error {
+	saveTags := make(map[string]string)
+	for k, v := range ts {
+		saveTags[k] = base64.StdEncoding.EncodeToString([]byte(v))
+	}
+	t, err := tags.NewTags(saveTags, false)
+	if err != nil {
+		return err
+	}
+
+	return m.client.PutObjectTagging(ctx, m.bucketName, objectKey, t, minio.PutObjectTaggingOptions{})
+
 }

@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-
 	"io"
 	"net/http"
 	"strings"
@@ -456,4 +455,23 @@ func (t *tosClient) GetObjectTagging(ctx context.Context, objectKey string) (map
 	return slices.ToMap(response.TagSet.Tags, func(e tos.Tag) (string, string) {
 		return e.Key, e.Value
 	}), nil
+}
+
+func (t *tosClient) PutObjectTagging(ctx context.Context, objectKey string, ts map[string]string) error {
+	tags := make([]tos.Tag, 0, len(ts))
+	for k, v := range ts {
+		tags = append(tags, tos.Tag{Key: k, Value: v})
+	}
+	_, err := t.client.PutObjectTagging(ctx, &tos.PutObjectTaggingInput{
+		Bucket: t.bucketName,
+		Key:    objectKey,
+		TagSet: tos.TagSet{
+			Tags: tags,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return nil
+
 }
