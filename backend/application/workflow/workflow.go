@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -764,6 +765,86 @@ func (w *ApplicationService) GetProcess(ctx context.Context, req *workflow.GetWo
 	return resp, nil
 }
 
+func collectFileFields(ctx context.Context, workflowID int64) (map[string]bool, error) {
+	wf, err := GetWorkflowDomainSVC().Get(ctx, &vo.GetPolicy{
+		ID:    workflowID,
+		QType: workflowModel.FromDraft,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	canvas := &vo.Canvas{}
+	err = sonic.UnmarshalString(wf.Canvas, canvas)
+	if err != nil {
+		return nil, err
+	}
+	var startNode *vo.Node
+	for _, n := range canvas.Nodes {
+		if n.ID == "100001" {
+			startNode = n
+			break
+		}
+	}
+	if startNode == nil {
+		return nil, fmt.Errorf("workflow invalid, not found start node")
+	}
+	fileFields := make(map[string]bool)
+	for _, v := range startNode.Data.Outputs {
+		v, err := vo.ParseVariable(v)
+		if err != nil {
+			return nil, err
+		}
+		if v.AssistType >= vo.AssistTypeDefault && v.AssistType <= vo.AssistTypeVoice {
+			fileFields[v.Name] = true
+		}
+	}
+	return fileFields, nil
+}
+
+func (w *ApplicationService) adaptorInputFileFields(ctx context.Context, workflowID int64, input string) (string, error) {
+	fileFields, err := collectFileFields(ctx, workflowID)
+	inputMap := make(map[string]any)
+	err = sonic.UnmarshalString(input, &inputMap)
+	if err != nil {
+		return "", err
+	}
+	appendQueryFileName := func(v string) (string, error) {
+		u, err := url.Parse(v)
+		if err != nil {
+			return "", err
+		}
+		filename := u.Query().Get("x-wf-file_name")
+		if len(filename) > 0 {
+			return u.String(), nil
+		}
+		fileURI := strings.TrimPrefix(u.Path, "/opencoze")
+		tagging, err := w.TosClient.GetObjectTagging(ctx, fileURI)
+		if err != nil {
+			return "", err
+		}
+		if fName, ok := tagging["filename"]; ok {
+			query := u.Query()
+			query.Set("x-wf-file_name", fName)
+			u.RawQuery = query.Encode()
+		}
+		return u.String(), nil
+
+	}
+	for k, v := range inputMap {
+		if fileFields[k] {
+			v, err = appendQueryFileName(v.(string))
+			if err != nil {
+				return "", err
+			}
+			inputMap[k] = v
+		}
+	}
+	input, _ = sonic.MarshalString(inputMap)
+	return input, nil
+
+}
+
 func (w *ApplicationService) GetNodeExecuteHistory(ctx context.Context, req *workflow.GetNodeExecuteHistoryRequest) (
 	_ *workflow.GetNodeExecuteHistoryResponse, err error,
 ) {
@@ -803,6 +884,11 @@ func (w *ApplicationService) GetNodeExecuteHistory(ctx context.Context, req *wor
 			}
 
 			result, err := convertNodeExecution(nodeExe)
+			if err != nil {
+				return nil, err
+			}
+
+			result.Input, err = w.adaptorInputFileFields(ctx, mustParseInt64(req.GetWorkflowID()), result.Input)
 			if err != nil {
 				return nil, err
 			}
