@@ -2454,7 +2454,7 @@ func TestStartNodeDefaultValues(t *testing.T) {
 			result, _ := r.openapiSyncRun(idStr, input)
 			assert.Equal(t, result, map[string]any{
 				"ts":    "2025-07-09 21:43:34",
-				"files": "http://imagex.fanlv.fun/tos-cn-i-1heqlfnr21/e81acc11277f421390770618e24e01ce.jpeg~tplv-1heqlfnr21-image.image?x-wf-file_name=20250317-154742.jpeg",
+				"files": "http://imagex.fanlv.fun/tos-cn-i-1heqlfnr21/e81acc11277f421390770618e24e01ce.jpeg~tplv-1heqlfnr21-image.image",
 				"str":   "str",
 				"object": map[string]any{
 					"a": "1",
@@ -2478,7 +2478,7 @@ func TestStartNodeDefaultValues(t *testing.T) {
 			result, _ := r.openapiSyncRun(idStr, input)
 			assert.Equal(t, result, map[string]any{
 				"ts":    "2025-07-09 21:43:34",
-				"files": "http://imagex.fanlv.fun/tos-cn-i-1heqlfnr21/e81acc11277f421390770618e24e01ce.jpeg~tplv-1heqlfnr21-image.image?x-wf-file_name=20250317-154742.jpeg",
+				"files": "http://imagex.fanlv.fun/tos-cn-i-1heqlfnr21/e81acc11277f421390770618e24e01ce.jpeg~tplv-1heqlfnr21-image.image",
 				"str":   "str",
 				"object": map[string]any{
 					"a": "1",
@@ -2503,7 +2503,7 @@ func TestStartNodeDefaultValues(t *testing.T) {
 			result, _ := r.openapiSyncRun(idStr, input)
 			assert.Equal(t, result, map[string]any{
 				"ts":    "2025-07-09 21:43:34",
-				"files": "http://imagex.fanlv.fun/tos-cn-i-1heqlfnr21/e81acc11277f421390770618e24e01ce.jpeg~tplv-1heqlfnr21-image.image?x-wf-file_name=20250317-154742.jpeg",
+				"files": "http://imagex.fanlv.fun/tos-cn-i-1heqlfnr21/e81acc11277f421390770618e24e01ce.jpeg~tplv-1heqlfnr21-image.image",
 				"str":   "value",
 				"object": map[string]any{
 					"a": "1",

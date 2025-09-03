@@ -18,6 +18,10 @@ package adaptor
 
 import (
 	"context"
+	crossupload "github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload"
+	"github.com/coze-dev/coze-studio/backend/crossdomain/contract/upload/uploadmock"
+	"github.com/coze-dev/coze-studio/backend/domain/upload/service"
+	"github.com/coze-dev/coze-studio/backend/types/consts"
 	"io"
 	"net"
 	"net/http"
@@ -57,7 +61,6 @@ import (
 	"github.com/coze-dev/coze-studio/backend/internal/testutil"
 	"github.com/coze-dev/coze-studio/backend/pkg/ctxcache"
 	"github.com/coze-dev/coze-studio/backend/pkg/sonic"
-	"github.com/coze-dev/coze-studio/backend/types/consts"
 )
 
 func TestMain(m *testing.M) {
@@ -709,7 +712,14 @@ func TestKnowledgeDeleter(t *testing.T) {
 		assert.NoError(t, err)
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
-
+		mockUpload := uploadmock.NewMockUploader(ctrl)
+		mockUpload.EXPECT().GetFileTagging(gomock.Any(), gomock.Any()).Return(&service.GetFileTaggingResponse{
+			Tagging: map[string]string{
+				"filename": "1706.03762v7.pdf",
+				"file_ext": ".pdf",
+			},
+		}, nil)
+		crossupload.SetDefaultSVC(mockUpload)
 		mockKnowledgeOperator := knowledgemock.NewMockKnowledge(ctrl)
 		crossknowledge.SetDefaultSVC(mockKnowledgeOperator)
 

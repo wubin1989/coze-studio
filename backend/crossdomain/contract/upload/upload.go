@@ -24,6 +24,7 @@ import (
 
 var defaultSVC Uploader
 
+//go:generate  mockgen -destination uploadmock/upload_mock.go --package uploadmock -source upload.go
 type Uploader interface {
 	GetFile(ctx context.Context, req *service.GetFileRequest) (resp *service.GetFileResponse, err error)
 	GetFileTagging(ctx context.Context, req *service.GetFileTaggingRequest) (resp *service.GetFileTaggingResponse, err error)
