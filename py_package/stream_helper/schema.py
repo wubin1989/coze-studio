@@ -86,13 +86,13 @@ class ContextModeEnum(int, Enum):
 class SSEData(BaseModel):
     stream_id: str
     message_title: Optional[str] = None
-    context_mode: Union[ContextModeEnum, int] 
-    output_mode: OutputModeEnum   # 0=非流式, 1=流式
-    return_type: Union[ReturnTypeEnum, int] 
-    content_type: Union[ContentTypeEnum, int]
-    is_last_msg: bool
-    is_finish: bool
-    is_last_packet_in_msg: bool
+    context_mode: Union[ContextModeEnum, int] = ContextModeEnum.NOT_IGNORE
+    output_mode: OutputModeEnum = OutputModeEnum.STREAM  # 0=非流式, 1=流式
+    return_type: Union[ReturnTypeEnum, int] = ReturnTypeEnum.USER_TERMINAL
+    content_type: Union[ContentTypeEnum, int] = ContentTypeEnum.TEXT
+    is_last_msg: bool = False
+    is_finish: bool = False
+    is_last_packet_in_msg: bool = False
     content: Optional[str] = None
     response_for_model: Optional[str] = None
     ext: Optional[Dict[str, str]] = None
