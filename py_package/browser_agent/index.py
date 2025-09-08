@@ -35,7 +35,7 @@ from browser_use.agent.views import (
 	AgentOutput,
 )
 from browser_use import Agent, BrowserProfile, BrowserSession
-from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo
+from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo,MessageActionInfo,MessageActionItem
 
 app = FastAPI()
 load_dotenv()
@@ -88,7 +88,6 @@ class RunBrowserUseAgentCtx(BaseModel):
     cookie: str
     llm_config: LLMConfig
     browser_session_endpoint: str
-    endpoint_header: Dict[str, str]
     max_steps: int = 20
     system_prompt: str | None = None
     
@@ -114,7 +113,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
     event_queue = asyncio.Queue(maxsize=100)
     
     # 初始化日志
-    logging.info(f"RunBrowserUseAgent with query: {ctx.query}")
+    logging.info(f"RunBrowserUseAgent with query: {ctx.query},task_id:{task_id}")
     
     # 浏览器初始化
     try:
@@ -126,7 +125,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
         else:
             browser_wrapper = BrowserWrapper(None, None, None, 'id', ctx.browser_session_endpoint)
     except Exception as e:
-        logging.error(f"[{task_id}] Failed to initialize browser: {e}")
+        logging.error(f"[Failed to initialize browser: {e}")
         yield "error"
         return
 
@@ -134,25 +133,15 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
     cdp_url = None
     try:
         if browser_wrapper.remote_browser_id:
-            logging.info(f"[{task_id}] Starting task with remote browser")
+            logging.info(f"Starting task with remote browser")
             async with aiohttp.ClientSession() as session:
-                get_url = f"{browser_wrapper.endpoint}"
-                async with session.get(get_url, timeout=aiohttp.ClientTimeout(total=30)) as response:
-                    if response.status == 200:
-                        browser_info = await response.json()
-                        cdp_url = browser_info['cdp_url']
-                        if not cdp_url.endswith('/'):
-                            cdp_url = cdp_url + '/'
-                        logging.info(f"Retrieved remote CDP URL: {cdp_url}")
-                    else:
-                        error_text = await response.text()
-                        raise Exception(f"Failed to get browser info. Status: {response.status}, Error: {error_text}")
+                cdp_url = f"{browser_wrapper.endpoint}/v1/browsers/"
         else:
             current_port = CURRENT_CDP_PORT
-            logging.info(f"[{task_id}] Starting task with local browser on port: {current_port}")
+            logging.info(f"Starting task with local browser on port: {current_port}")
             cdp_url = f"http://127.0.0.1:{current_port}"
     except Exception as e:
-        logging.error(f"[{task_id}] Error getting browser URL: {e}")
+        logging.error(f"Error getting browser URL: {e}")
         yield "error"
         return
 
@@ -173,9 +162,13 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             disable_security=True,
             highlight_elements=True,
             wait_between_actions=1,
+            extra_http_headers={
+                'x-sandbox-taskid':ctx.conversation_id,
+            }
         )
         browser_session = BrowserSession(
             browser_profile=browser_profile,
+            
             cdp_url=cdp_url,
         )
         logging.info(f"[{task_id}] Browser initialized with CDP URL: {cdp_url}")
@@ -184,7 +177,17 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
         async def new_step_callback_wrapper(browser_state_summary: BrowserStateSummary, 
                                           model_output: AgentOutput, 
                                           step_number: int):
-            data = StepInfo(step_number=(step_number-1),goal=model_output.next_goal).model_dump_json()
+            islogin = False
+            for ac in model_output.action:
+                action_data = ac.model_dump(exclude_unset=True)
+                action_name = next(iter(ac.keys()))
+                if action_name == 'wait_for_login':
+                    islogin = True
+            data = ''
+            if islogin:
+                data = data + MessageActionInfo(actions=[MessageActionItem()]).model_dump_json()
+            else: 
+                data = data + StepInfo(step_number=(step_number-1),goal=model_output.next_goal).model_dump_json()
             await event_queue.put(genSSEData(
                 stream_id=task_id,
                 content=data
@@ -210,13 +213,11 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                 base_url=base_url,
                 model=ctx.llm_config.model_id,
                 api_key=ctx.llm_config.api_key,
-                default_headers={"X-Client-Request-Id": "vefaas-browser-use-20250403"},
             )
             extract_llm = ChatOpenAI(
                 base_url=base_url,
                 model=ctx.llm_config.extract_model_id,
                 api_key=ctx.llm_config.api_key,
-                default_headers={"X-Client-Request-Id": "vefaas-browser-use-20250403"}
             )
             
             agent = Agent(

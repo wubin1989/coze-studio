@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Dict, Union, Literal
+from typing import Optional, Dict, Union
 from pydantic import BaseModel
 
 class StepInfo(BaseModel):
@@ -7,9 +7,7 @@ class StepInfo(BaseModel):
     goal:str
 
 class WebSocketItem(BaseModel):
-    ws_url:str
     vnc_url:str
-    cdp_url:str
 
 class WebSocketInfo(BaseModel):
     items: list[WebSocketItem]
@@ -20,7 +18,7 @@ class MessageActionTypeEnum(int, Enum):
     WebPageAuthorization = 1 # Web page authorization
 
 class MessageActionItem(BaseModel):
-    MessageActionType: MessageActionTypeEnum = MessageActionTypeEnum.WebPageAuthorization
+    type: MessageActionTypeEnum = MessageActionTypeEnum.WebPageAuthorization
     class Config:
         use_enum_values = True
 
