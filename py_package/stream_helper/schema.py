@@ -81,6 +81,12 @@ class ContextModeEnum(int, Enum):
     NOT_IGNORE = 0  # 不忽略上下文
     IGNORE = 1      # 忽略上下文
 
+class MessageTypeEnum(int, Enum):
+    """SSEData.message_type 的枚举值:0.answer 1.verbose 2.tool_verbose"""
+    ANSWER = 0
+    VERBOSE = 1
+    TOOL_VERBOSE = 2
+
 class SSEData(BaseModel):
     stream_id: str
     message_title: Optional[str] = None
@@ -88,6 +94,7 @@ class SSEData(BaseModel):
     output_mode: OutputModeEnum = OutputModeEnum.STREAM  # 0=非流式, 1=流式
     return_type: Union[ReturnTypeEnum, int] = ReturnTypeEnum.USER_TERMINAL
     content_type: Union[ContentTypeEnum, int] = ContentTypeEnum.TEXT
+    message_type: MessageTypeEnum = MessageTypeEnum.ANSWER
     is_last_msg: bool = False
     is_finish: bool = False
     is_last_packet_in_msg: bool = False
