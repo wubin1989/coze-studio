@@ -36,8 +36,8 @@ class FileChangeType(str, Enum):
     UPDATE = "update"
 
 class FileChangeData(BaseModel):
-    file_type: FileType
-    file_path: str
+    file_type: FileType = FileType.FILE
+    file_path: str = ''
     file_name: str
     change_type: FileChangeType 
     uri: str

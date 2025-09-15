@@ -9,13 +9,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from typing import Dict
+import tempfile
 import asyncio
 import json
 import logging
 import os
 import uuid
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator,Optional
 import aiohttp
 import aiohttp
 import uvicorn
@@ -34,9 +35,11 @@ from browser_agent.browser_use_custom.i18n import _, set_language
 from browser_use.agent.views import (
 	AgentOutput,
 )
+from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
 from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo,MessageActionInfo,MessageActionItem
-
+from browser_use.filesystem.file_system import FileSystem
+from browser_agent.upload import UploadService
 app = FastAPI()
 load_dotenv()
 
@@ -85,11 +88,11 @@ class LLMConfig(BaseModel):
 class RunBrowserUseAgentCtx(BaseModel):
     query: str
     conversation_id: str
-    cookie: str
-    llm_config: LLMConfig
+    llm: BaseChatModel
     browser_session_endpoint: str
     max_steps: int = 20
     system_prompt: str | None = None
+    upload_service:Optional[UploadService] = None
     
 def genSSEData(stream_id:str,content:str,content_type:ContentTypeEnum = ContentTypeEnum.TEXT,return_type:ReturnTypeEnum = ReturnTypeEnum.MODEL,output_mode:OutputModeEnum = OutputModeEnum.STREAM,is_last_msg:bool = False,is_finish:bool = False,is_last_packet_in_msg:bool = False,message_title:str = None,context_mode:ContextModeEnum = ContextModeEnum.NOT_IGNORE,response_for_model:str = None,ext:Dict[str,str] = None,card_body:str = None)->SSEData:
     return SSEData(
@@ -111,7 +114,9 @@ def genSSEData(stream_id:str,content:str,content_type:ContentTypeEnum = ContentT
 async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEData, None]:
     task_id = str(uuid.uuid4())
     event_queue = asyncio.Queue(maxsize=100)
-    
+    base_tmp = tempfile.gettempdir()  # e.g., /tmp on Unix
+    file_system_path = os.path.join(base_tmp, f'browser_use_agent_666')
+    file_system = FileSystem(base_dir=file_system_path)
     # 初始化日志
     logging.info(f"RunBrowserUseAgent with query: {ctx.query},task_id:{task_id}")
     
@@ -149,7 +154,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
     base_dir = os.path.join("videos", task_id)
     snapshot_dir = os.path.join(base_dir, "snapshots")
     Path(snapshot_dir).mkdir(parents=True, exist_ok=True)
-
+    file_dir = os
     browser_session = None
     agent = None
     agent_task = None
@@ -162,13 +167,14 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             disable_security=True,
             highlight_elements=True,
             wait_between_actions=1,
-            extra_http_headers={
+            headers={
                 'x-sandbox-taskid':ctx.conversation_id,
-            }
+                'x-tt-env':'ppe_agent_ide',
+                'x-use-ppe':'1',
+            },
         )
         browser_session = BrowserSession(
             browser_profile=browser_profile,
-            
             cdp_url=cdp_url,
         )
         logging.info(f"[{task_id}] Browser initialized with CDP URL: {cdp_url}")
@@ -180,9 +186,22 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             islogin = False
             for ac in model_output.action:
                 action_data = ac.model_dump(exclude_unset=True)
-                action_name = next(iter(ac.keys()))
+                action_name = next(iter(action_data.keys()))
+                content = ''
+                file_name = ''
                 if action_name == 'wait_for_login':
                     islogin = True
+                if action_name == 'write_file':
+                    content = action_data[action_name]['content']
+                    file_name = f'{task_id}/{action_data[action_name]["file_name"]}'
+                if action_name == 'replace_file_str':
+                    file_name = f'{task_id}/{action_data[action_name]["file_name"]}'
+                    file_obj = file_system.get_file({action_data[action_name]["file_name"]})
+                    origin_content = file_obj.read()
+                    content = origin_content.replace(action_data[action_name]["old_str"], action_data[action_name]["new_str"])
+                if ctx.upload_service:
+                    if action_name == 'write_file' or action_name == 'replace_file_str':
+                        await ctx.upload_service.upload_file(file_content=content,file_name=file_name)
             data = ''
             if islogin:
                 data = data + MessageActionInfo(actions=[MessageActionItem()]).model_dump_json()
@@ -194,46 +213,19 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             ))
 
         # Agent 创建
-        logging.info(f"Creating agent with task: {task_id}, llm: {ctx.llm_config.llm_type}")
-        if ctx.llm_config.llm_type == llm_openai:
-            logging.info(f"[{task_id}] Creating OpenAI agent")
-            agent = Agent(
-                task=ctx.query,
-                llm=ChatOpenAI(model="gpt-4o"),
-                use_vision=True,
-                browser_session=browser_session,
-                register_new_step_callback=new_step_callback_wrapper,
-            )
-        elif ctx.llm_config.llm_type == llm_ark:
-            logging.info(f"[{task_id}] Creating Ark agent")
-            os.environ["OPENAI_API_KEY"] = "sk-dummy"
-            base_url = os.getenv("ARK_BASE_URL", "https://ark.cn-beijing.volces.com/api/v3")
-
-            llmOpenAI = ChatOpenAI(
-                base_url=base_url,
-                model=ctx.llm_config.model_id,
-                api_key=ctx.llm_config.api_key,
-            )
-            extract_llm = ChatOpenAI(
-                base_url=base_url,
-                model=ctx.llm_config.extract_model_id,
-                api_key=ctx.llm_config.api_key,
-            )
-            
-            agent = Agent(
-                task=ctx.query,
-                llm=llmOpenAI,
-                tool_calling_method=os.getenv("ARK_FUNCTION_CALLING", "function_calling").lower(),
-                browser_session=browser_session,
-                register_new_step_callback=new_step_callback_wrapper,
-                use_vision=os.getenv("ARK_USE_VISION", "False").lower() == "true",
-                use_vision_for_planner=os.getenv("ARK_USE_VISION", "False").lower() == "true",
-                page_extraction_llm=extract_llm,
-                controller=MyController(),
-                override_system_message=ctx.system_prompt,
-            )
-        else:
-            raise ValueError(f"Unknown LLM type: {ctx.llm_config.llm_type}")
+        agent = Agent(
+            task=ctx.query,
+            llm=ctx.llm,
+            tool_calling_method=os.getenv("ARK_FUNCTION_CALLING", "function_calling").lower(),
+            browser_session=browser_session,
+            register_new_step_callback=new_step_callback_wrapper,
+            use_vision=os.getenv("ARK_USE_VISION", "False").lower() == "true",
+            use_vision_for_planner=os.getenv("ARK_USE_VISION", "False").lower() == "true",
+            page_extraction_llm=ctx.llm,
+            file_system_path=file_system_path,
+            controller=MyController(),
+            override_system_message=ctx.system_prompt,
+        )
 
         logging.info(f"[{task_id}] Agent initialized and ready to run")
 
@@ -285,13 +277,12 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                      if hasattr(item, "extracted_content")]
                     for history_item in result.history
                 ]
+                completion_event = genSSEData(
+                    stream_id=task_id,
+                    content= 'done'
+                )
+                yield completion_event
 
-        # 发送完成事件
-        completion_event = genSSEData(
-            stream_id=task_id,
-            content='done'
-        )
-        yield completion_event
         logging.info(f"[{task_id}] Task completed successfully")
 
     except Exception as e:
