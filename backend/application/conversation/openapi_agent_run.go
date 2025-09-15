@@ -103,7 +103,7 @@ func (a *OpenapiAgentRunApplication) checkConversation(ctx context.Context, ar *
 			return nil, err
 		}
 		if conData == nil {
-			return nil, errors.New("conversation data is nil")
+			return nil, errorx.New(errno.ErrConversationNotFound)
 		}
 		conversationData = conData
 
@@ -111,7 +111,7 @@ func (a *OpenapiAgentRunApplication) checkConversation(ctx context.Context, ar *
 	}
 
 	if conversationData.CreatorID != userID {
-		return nil, errors.New("conversation data not match")
+		return nil, errorx.New(errno.ErrConversationPermissionCode, errorx.KV("msg","user not match"))
 	}
 
 	return conversationData, nil
@@ -263,7 +263,7 @@ func (a *OpenapiAgentRunApplication) parseAdditionalMessages(ctx context.Context
 
 		if item.ContentType == run.ContentTypeMixApi {
 
-			if ptr.From(item.Type)  ==  string(message.MessageTypeAnswer) {
+			if ptr.From(item.Type) == string(message.MessageTypeAnswer) {
 				return nil, errors.New(" answer messages only support text content")
 			}
 

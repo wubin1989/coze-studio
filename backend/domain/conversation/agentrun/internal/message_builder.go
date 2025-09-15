@@ -221,7 +221,7 @@ func preCreateAnswer(ctx context.Context, rtDependence *AgentRuntime) (*msgEntit
 	return crossmessage.DefaultSVC().PreCreate(ctx, msgMeta)
 }
 
-func buildAdditionalMessage2Create(ctx context.Context, runRecord *entity.RunRecordMeta, additionalMessage *entity.AdditionalMessage,userID string) *message.Message {
+func buildAdditionalMessage2Create(ctx context.Context, runRecord *entity.RunRecordMeta, additionalMessage *entity.AdditionalMessage, userID string) *message.Message {
 
 	msg := &msgEntity.Message{
 		ConversationID: runRecord.ConversationID,
@@ -254,7 +254,7 @@ func buildAdditionalMessage2Create(ctx context.Context, runRecord *entity.RunRec
 			}
 		}
 		modelContent := &schema.Message{
-			Role: schema.Assistant,
+			Role:    schema.Assistant,
 			Content: msg.Content,
 		}
 
@@ -265,7 +265,6 @@ func buildAdditionalMessage2Create(ctx context.Context, runRecord *entity.RunRec
 	}
 	return msg
 }
-
 
 func buildAgentMessage2Create(ctx context.Context, chunk *entity.AgentRespEvent, messageType message.MessageType, rtDependence *AgentRuntime) *message.Message {
 	arm := rtDependence.GetRunMeta()

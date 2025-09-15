@@ -427,14 +427,13 @@ func (mh *MessageEventHandler) HandlerInput(ctx context.Context, rtDependence *A
 	return cm, nil
 }
 
-func (mh *MessageEventHandler) ParseAdditionalMessages(ctx context.Context, rtDependence *AgentRuntime,  runRecord *entity.RunRecordMeta) error {
+func (mh *MessageEventHandler) ParseAdditionalMessages(ctx context.Context, rtDependence *AgentRuntime, runRecord *entity.RunRecordMeta) error {
 
 	if len(rtDependence.GetRunMeta().AdditionalMessages) == 0 {
 		return nil
 	}
 
-
-	additionalMessages := make([]*message.Message, 0 ,len(rtDependence.GetRunMeta().AdditionalMessages))
+	additionalMessages := make([]*message.Message, 0, len(rtDependence.GetRunMeta().AdditionalMessages))
 
 	for _, msg := range rtDependence.GetRunMeta().AdditionalMessages {
 		cm := buildAdditionalMessage2Create(ctx, runRecord, msg, rtDependence.GetRunMeta().UserID)

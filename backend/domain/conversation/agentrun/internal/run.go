@@ -107,7 +107,7 @@ func (rd *AgentRuntime) GetHistory() []*msgEntity.Message {
 
 func (art *AgentRuntime) Run(ctx context.Context) (err error) {
 
-		mh := &MessageEventHandler{
+	mh := &MessageEventHandler{
 		messageEvent: art.MessageEvent,
 		sw:           art.SW,
 	}
