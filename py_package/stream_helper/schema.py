@@ -7,7 +7,7 @@ class StepInfo(BaseModel):
     goal:str
 
 class WebSocketItem(BaseModel):
-    vnc_url:str
+    ws_url:str
 
 class WebSocketInfo(BaseModel):
     items: list[WebSocketItem]
