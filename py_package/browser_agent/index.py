@@ -37,7 +37,7 @@ from browser_use.agent.views import (
 )
 from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
-from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo,MessageActionInfo,MessageActionItem
+from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo,MessageActionInfo,MessageActionItem,ReplyContentType,ReplyTypeInReplyEnum,ContentTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
 app = FastAPI()
@@ -94,7 +94,20 @@ class RunBrowserUseAgentCtx(BaseModel):
     system_prompt: str | None = None
     upload_service:Optional[UploadService] = None
     
-def genSSEData(stream_id:str,content:str,content_type:ContentTypeEnum = ContentTypeEnum.TEXT,return_type:ReturnTypeEnum = ReturnTypeEnum.MODEL,output_mode:OutputModeEnum = OutputModeEnum.STREAM,is_last_msg:bool = False,is_finish:bool = False,is_last_packet_in_msg:bool = False,message_title:str = None,context_mode:ContextModeEnum = ContextModeEnum.NOT_IGNORE,response_for_model:str = None,ext:Dict[str,str] = None,card_body:str = None)->SSEData:
+def genSSEData(stream_id:str,
+               content:str,
+               content_type:ContentTypeEnum = ContentTypeEnum.TEXT,
+               return_type:ReturnTypeEnum = ReturnTypeEnum.MODEL,
+               output_mode:OutputModeEnum = OutputModeEnum.STREAM,
+               is_last_msg:bool = False,
+               is_finish:bool = False,
+               is_last_packet_in_msg:bool = False,
+               message_title:str = None,
+               context_mode:ContextModeEnum = ContextModeEnum.NOT_IGNORE,
+               response_for_model:str = None,
+               ext:Dict[str,str] = None,
+               card_body:str = None,
+               reply_content_type:Optional[ReplyContentType] = None)->SSEData:
     return SSEData(
         stream_id = stream_id,
         content = content,
@@ -109,6 +122,7 @@ def genSSEData(stream_id:str,content:str,content_type:ContentTypeEnum = ContentT
         response_for_model = response_for_model,
         ext = ext,
         card_body = card_body,
+        reply_content_type = reply_content_type
     )
 
 async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEData, None]:
@@ -203,13 +217,16 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                     if action_name == 'write_file' or action_name == 'replace_file_str':
                         await ctx.upload_service.upload_file(file_content=content,file_name=file_name)
             data = ''
+            content_type = ContentTypeInReplyEnum.TXT
             if islogin:
                 data = data + MessageActionInfo(actions=[MessageActionItem()]).model_dump_json()
+                content_type = ContentTypeInReplyEnum.ACTION_INFO
             else: 
                 data = data + StepInfo(step_number=(step_number-1),goal=model_output.next_goal).model_dump_json()
             await event_queue.put(genSSEData(
                 stream_id=task_id,
-                content=data
+                content=data,
+                reply_content_type= ReplyContentType(content_type=content_type)
             ))
 
         # Agent 创建
