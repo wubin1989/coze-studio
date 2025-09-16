@@ -33,13 +33,15 @@ from browser_agent.utils import enforce_log_format
 from browser_use import Agent
 from browser_agent.browser_use_custom.i18n import _, set_language
 from browser_use.agent.views import (
-	AgentOutput,
+    AgentOutput,
 )
 from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
 from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
+from playwright.async_api import async_playwright
+
 app = FastAPI()
 load_dotenv()
 
@@ -124,7 +126,26 @@ def genSSEData(stream_id:str,
         card_body = card_body,
         reply_content_type = reply_content_type
     )
-
+def convert_ws_url(original_url: str) -> str:
+    """
+    将本地开发环境的 WebSocket URL 转换为生产环境的 URL 格式。
+    
+    示例输入:
+        'ws://127.0.0.1:8001/v1/browsers/devtools/browser/77a025af-5483-46e2-ac57-9360812e4608?faasInstanceName=vefaas-duxz5kfb-jjecq2yuvf-d340et34rnmvf4b2ugd0-sandbox'
+    
+    示例输出:
+        'ws://bots-sandbox.bytedance.net/api/sandbox/coze_studio/proxy/v1/browsers/devtools/browser/77a025af-5483-46e2-ac57-9360812e4608'
+    """
+    # 提取 UUID 部分（从路径中截取）
+    uuid_part = original_url.split("/v1/browsers/devtools/browser/")[1].split("?")[0]
+    
+    # 构建新 URL
+    new_url = (
+        "ws://bots-sandbox.bytedance.net"
+        "/ws/sandbox/coze_studio/proxy"
+        f"/v1/browsers/devtools/browser/{uuid_part}"
+    )
+    return new_url
 async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEData, None]:
     task_id = str(uuid.uuid4())
     event_queue = asyncio.Queue(maxsize=100)
@@ -152,9 +173,23 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
     cdp_url = None
     try:
         if browser_wrapper.remote_browser_id:
-            logging.info(f"Starting task with remote browser")
             async with aiohttp.ClientSession() as session:
-                cdp_url = f"{browser_wrapper.endpoint}/v1/browsers/"
+                get_url = f"{browser_wrapper.endpoint}/v1/browsers/"
+                async with session.get(url = get_url, 
+                                       timeout=aiohttp.ClientTimeout(total=30),
+                                       headers={
+                                            'x-sandbox-taskid':ctx.conversation_id,
+                                            'x-tt-env':'ppe_coze_sandbox',
+                                            'x-use-ppe':'1',
+                                        }) as response:
+                    if response.status == 200:
+                        reader = response.content
+                        browser_info = json.loads(await reader.read())
+                        cdp_url = convert_ws_url(browser_info['ws_url'])
+                        logging.info(f"[{task_id}] Retrieved remote CDP URL: {cdp_url}")
+                    else:
+                        error_text = await response.text()
+                        raise Exception(f"Failed to get browser info. Status: {response.status}, Error: {error_text}")
         else:
             current_port = CURRENT_CDP_PORT
             logging.info(f"Starting task with local browser on port: {current_port}")
@@ -181,9 +216,10 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             disable_security=True,
             highlight_elements=True,
             wait_between_actions=1,
+            
             headers={
                 'x-sandbox-taskid':ctx.conversation_id,
-                'x-tt-env':'ppe_agent_ide',
+                'x-tt-env':'ppe_coze_sandbox',
                 'x-use-ppe':'1',
             },
         )
@@ -402,5 +438,6 @@ async def sse_task(request: Messages):
 if __name__ == "__main__":
     enforce_log_format()
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
 
