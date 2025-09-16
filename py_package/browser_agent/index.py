@@ -37,7 +37,7 @@ from browser_use.agent.views import (
 )
 from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
-from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,StepInfo,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum
+from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
 from playwright.async_api import async_playwright
@@ -258,7 +258,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                 data = data + MessageActionInfo(actions=[MessageActionItem()]).model_dump_json()
                 content_type = ContentTypeInReplyEnum.ACTION_INFO
             else: 
-                data = data + StepInfo(step_number=(step_number-1),goal=model_output.next_goal).model_dump_json()
+                data = data + model_output.next_goal
             await event_queue.put(genSSEData(
                 stream_id=task_id,
                 content=data,
