@@ -13,6 +13,7 @@ class FileItem(BaseModel):
     update_time: int
 
 class UploadService(BaseModel,ABC):
+    headers:dict[str,str] = {}
     async def upload_file(self,file_content:str,file_name:str):
         pass
     async def list_file(self)->List[FileItem]:
