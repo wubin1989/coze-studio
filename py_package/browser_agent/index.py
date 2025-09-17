@@ -37,7 +37,7 @@ from browser_use.agent.views import (
 )
 from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
-from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum
+from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum,ReplyTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
 
@@ -322,25 +322,26 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                         break
                 if final_result:
                     break
-
+                
             if not final_result:
-                final_result = [
+                result = [
                     [item.extracted_content for item in history_item.result 
                      if hasattr(item, "extracted_content")]
                     for history_item in result.history
                 ]
-                result_str = "\n".join(
+                final_result = "\n".join(
                     item
-                    for sublist in final_result
+                    for sublist in result
                     for item in sublist
                     if isinstance(item, str)
                 )
+            if final_result:
                 logging.info(f"[{task_id}] final_result: {final_result}")
                 completion_event = genSSEData(
-                    stream_id=task_id,
-                    content= result_str,
+                    stream_id=ctx.conversation_id,
+                    content= final_result,
                     return_type=ReturnTypeEnum.MODEL,
-                    response_for_model=result_str,
+                    response_for_model=final_result,
                     content_type=ContentTypeEnum.TEXT,
                     output_mode=OutputModeEnum.NOT_STREAM,
                     reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.TXT,reply_type=ReplyTypeInReplyEnum.ANSWER)
@@ -351,30 +352,10 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
 
     except Exception as e:
         logging.error(f"[{task_id}] Agent execution failed: {e}")
-        yield "error"
-        
-    finally:
-        # 清理资源
-        async def cleanup():
-            try:
-                if agent:
-                    agent.stop()
-                if agent_task and not agent_task.done():
-                    agent_task.cancel()
-                    try:
-                        await agent_task
-                    except asyncio.CancelledError:
-                        pass
-                if browser_session:
-                    await browser_session.close()
-                if browser_wrapper:
-                    await browser_wrapper.stop()
-            except Exception as e:
-                logging.error(f"[{task_id}] Failed during cleanup: {e}")
-        
-        # 非阻塞清理
-        asyncio.create_task(cleanup())  
-
+        yield genSSEData(
+            stream_id=ctx.conversation_id,
+            content=str(e),
+        )
 
 
 @app.get("/")
