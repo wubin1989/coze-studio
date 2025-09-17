@@ -352,7 +352,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                     logging.info(f"filter file by time success, file_change_info: {file_change_info.model_dump_json()}")
                     file_pack = SSEData(
                         stream_id=ctx.conversation_id,
-                        reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.FILE_CHANGE_INFO),
+                        reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.FILE_CHANGE_INFO,reply_type=ReplyTypeInReplyEnum.ANSWER),
                         content = file_change_info.model_dump_json())
                     yield file_pack
             except Exception as e:
