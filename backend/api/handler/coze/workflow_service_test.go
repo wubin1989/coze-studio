@@ -1459,6 +1459,36 @@ func TestTestResumeWithInputNode(t *testing.T) {
 			resp := post[workflow.OpenAPIRunFlowResponse](r, syncRunReq)
 			assert.Equal(t, int64(errno.ErrOpenAPIInterruptNotSupported), resp.Code)
 		})
+
+		mockey.PatchConvey("test run, then sync resume", func() {
+			ctx := t.Context()
+			exeID := r.testRun(id, map[string]string{
+				"input": "unused initial input",
+			})
+			e := r.getProcess(id, exeID)
+			assert.NotNil(t, e.event) // interrupted
+
+			exeInt64ID, _ := strconv.ParseInt(exeID, 10, 64)
+			eventInt64ID, _ := strconv.ParseInt(e.event.ID, 10, 64)
+
+			result, _, err := appworkflow.GetWorkflowDomainSVC().SyncResume(ctx, &entity.ResumeRequest{
+				ExecuteID:  exeInt64ID,
+				EventID:    eventInt64ID,
+				ResumeData: userInputStr,
+			}, workflowModel.ExecuteConfig{
+				Operator:    123,
+				Mode:        workflowModel.ExecuteModeDebug,
+				BizType:     workflowModel.BizTypeWorkflow,
+				Cancellable: true,
+			})
+			assert.NoError(t, err)
+			assert.Equal(t, map[string]any{
+				"input":    "user input",
+				"inputArr": nil,
+				"field1":   `["1","2"]`,
+			}, mustUnmarshalToMap(t, *result.Output))
+
+		})
 	})
 }
 
@@ -6292,3 +6322,5 @@ func TestChatFlowRun(t *testing.T) {
 
 	})
 }
+
+//

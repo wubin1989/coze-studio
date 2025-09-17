@@ -906,6 +906,197 @@ func (i *impl) AsyncResume(ctx context.Context, req *entity.ResumeRequest, confi
 	return nil
 }
 
+func (i *impl) SyncResume(ctx context.Context, req *entity.ResumeRequest, config workflowModel.ExecuteConfig) (*entity.WorkflowExecution, vo.TerminatePlan, error) {
+	wfExe, found, err := i.repo.GetWorkflowExecution(ctx, req.ExecuteID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if !found {
+		return nil, "", fmt.Errorf("workflow execution does not exist, id: %d", req.ExecuteID)
+	}
+
+	if wfExe.RootExecutionID != wfExe.ID {
+		return nil, "", fmt.Errorf("only root workflow can be resumed")
+	}
+
+	if wfExe.Status != entity.WorkflowInterrupted {
+		return nil, "", fmt.Errorf("workflow execution %d is not interrupted, status is %v, cannot resume", req.ExecuteID, wfExe.Status)
+	}
+
+	var from workflowModel.Locator
+	if wfExe.Version == "" {
+		from = workflowModel.FromDraft
+	} else {
+		from = workflowModel.FromSpecificVersion
+	}
+
+	wfEntity, err := i.Get(ctx, &vo.GetPolicy{
+		ID:       wfExe.WorkflowID,
+		QType:    from,
+		Version:  wfExe.Version,
+		CommitID: wfExe.CommitID,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	var canvas vo.Canvas
+	err = sonic.UnmarshalString(wfEntity.Canvas, &canvas)
+	if err != nil {
+		return nil, "", err
+	}
+
+	config.From = from
+	config.Version = wfExe.Version
+	config.AppID = wfExe.AppID
+	config.AgentID = wfExe.AgentID
+	config.CommitID = wfExe.CommitID
+	config.WorkflowMode = wfEntity.Mode
+
+	if config.ConnectorID == 0 {
+		config.ConnectorID = wfExe.ConnectorID
+	}
+
+	var (
+		lastEventChan <-chan *execute.Event
+		startTime     time.Time
+		out           map[string]any
+		wf            *compose.Workflow
+		cancelCtx     context.Context
+		opts          []einoCompose.Option
+		nodeCount     int32
+	)
+	if wfExe.Mode == workflowModel.ExecuteModeNodeDebug {
+		nodeExes, err := i.repo.GetNodeExecutionsByWfExeID(ctx, wfExe.ID)
+		if err != nil {
+			return nil, "", err
+		}
+
+		if len(nodeExes) == 0 {
+			return nil, "", fmt.Errorf("during node debug resume, no node execution found for workflow execution %d", wfExe.ID)
+		}
+
+		var nodeID string
+		for _, ne := range nodeExes {
+			if ne.ParentNodeID == nil {
+				nodeID = ne.NodeID
+				break
+			}
+		}
+
+		workflowSC, err := adaptor.WorkflowSchemaFromNode(ctx, &canvas, nodeID)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert canvas to workflow schema: %w", err)
+		}
+		nodeCount = workflowSC.NodeCount()
+		wf, err = compose.NewWorkflowFromNode(ctx, workflowSC, vo.NodeKey(nodeID),
+			einoCompose.WithGraphName(fmt.Sprintf("%d", wfExe.WorkflowID)))
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create workflow: %w", err)
+		}
+
+		config.Mode = workflowModel.ExecuteModeNodeDebug
+
+		cancelCtx, _, opts, lastEventChan, err = compose.NewWorkflowRunner(
+			wfEntity.GetBasic(), workflowSC, config, compose.WithResumeReq(req)).Prepare(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+		startTime = time.Now()
+
+		out, err = wf.SyncRun(cancelCtx, nil, opts...)
+		if err != nil {
+			return nil, "", err
+		}
+	} else {
+		workflowSC, err := adaptor.CanvasToWorkflowSchema(ctx, &canvas)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to convert canvas to workflow schema: %w", err)
+		}
+
+		nodeCount = workflowSC.NodeCount()
+
+		var wfOpts []compose.WorkflowOption
+		wfOpts = append(wfOpts, compose.WithIDAsName(wfExe.WorkflowID))
+		if s := execute.GetStaticConfig(); s != nil && s.MaxNodeCountPerWorkflow > 0 {
+			wfOpts = append(wfOpts, compose.WithMaxNodeCount(s.MaxNodeCountPerWorkflow))
+		}
+
+		wf, err = compose.NewWorkflow(ctx, workflowSC, wfOpts...)
+		if err != nil {
+			return nil, "", fmt.Errorf("failed to create workflow: %w", err)
+		}
+
+		cancelCtx, _, opts, lastEventChan, err = compose.NewWorkflowRunner(
+			wfEntity.GetBasic(), workflowSC, config, compose.WithResumeReq(req)).Prepare(ctx)
+		if err != nil {
+			return nil, "", err
+		}
+
+		startTime = time.Now()
+
+		out, err = wf.SyncRun(cancelCtx, nil, opts...)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+
+	lastEvent := <-lastEventChan
+	updateTime := time.Now()
+
+	var outStr string
+	if wf.TerminatePlan() == vo.ReturnVariables {
+		outStr, err = sonic.MarshalString(out)
+		if err != nil {
+			return nil, "", err
+		}
+	} else {
+		outStr = out["output"].(string)
+	}
+
+	var status entity.WorkflowExecuteStatus
+	switch lastEvent.Type {
+	case execute.WorkflowSuccess:
+		status = entity.WorkflowSuccess
+	case execute.WorkflowInterrupt:
+		status = entity.WorkflowInterrupted
+	case execute.WorkflowFailed:
+		status = entity.WorkflowFailed
+	case execute.WorkflowCancel:
+		status = entity.WorkflowCancel
+	}
+
+	var failReason *string
+	if lastEvent.Err != nil {
+		failReason = ptr.Of(lastEvent.Err.Error())
+	}
+
+	return &entity.WorkflowExecution{
+		ID:            req.ExecuteID,
+		WorkflowID:    wfEntity.ID,
+		Version:       wfEntity.GetVersion(),
+		SpaceID:       wfEntity.SpaceID,
+		ExecuteConfig: config,
+		CreatedAt:     startTime,
+		NodeCount:     nodeCount,
+		Status:        status,
+		Duration:      lastEvent.Duration,
+		Input:         ptr.Of(req.ResumeData),
+		Output:        ptr.Of(outStr),
+		ErrorCode:     ptr.Of("-1"),
+		FailReason:    failReason,
+		TokenInfo: &entity.TokenUsage{
+			InputTokens:  lastEvent.GetInputTokens(),
+			OutputTokens: lastEvent.GetOutputTokens(),
+		},
+		UpdatedAt:       ptr.Of(updateTime),
+		RootExecutionID: req.ExecuteID,
+		InterruptEvents: lastEvent.InterruptEvents,
+	}, wf.TerminatePlan(), nil
+
+}
+
 // StreamResume resumes a workflow execution, using the passed in executionID and eventID.
 // Intermediate results during the resuming run are emitted using the returned StreamReader.
 // Caller is expected to poll the execution status using the GetExecution method.
