@@ -264,8 +264,6 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             for ac in model_output.action:
                 action_data = ac.model_dump(exclude_unset=True)
                 action_name = next(iter(action_data.keys()))
-                content = ''
-                file_name = ''
                 if action_name == 'wait_for_login':
                     islogin = True
             data = ''
