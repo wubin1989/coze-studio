@@ -14,7 +14,6 @@ class BrowserAgentBase(BaseModel,ABC):
     endpoint_header: Dict[str, str] = {}
     max_steps: int = 20
     system_prompt: str = None
-    start_time:datetime
     
     @abstractmethod
     async def save_cookies(self):

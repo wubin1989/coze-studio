@@ -37,7 +37,7 @@ from browser_use.agent.views import (
 )
 from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
-from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum,ReplyTypeInReplyEnum
+from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
 
@@ -259,7 +259,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             else: 
                 data = data + model_output.next_goal
             await event_queue.put(genSSEData(
-                stream_id=task_id,
+                stream_id=ctx.conversation_id,
                 content=data,
                 reply_content_type= ReplyContentType(content_type=content_type)
             ))
