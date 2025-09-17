@@ -347,6 +347,14 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                     reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.TXT,reply_type=ReplyTypeInReplyEnum.ANSWER)
                 )
                 yield completion_event
+        # if ctx.upload_service:
+        #     for f in file_system.list_files():
+        #         logging.info(f"file name: {f}")
+        #         file_obj = file_system.get_file(f)
+        #         if file_obj:
+        #             file_content = file_obj.read()
+        #             file_new_name = f'{task_id}/{f}'
+        #             await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
 
         logging.info(f"[{task_id}] Task completed successfully")
 
