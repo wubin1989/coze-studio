@@ -8,7 +8,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import Dict
+from typing import Dict,List,Union
 import tempfile
 import asyncio
 import json
@@ -40,7 +40,7 @@ from browser_use import Agent, BrowserProfile, BrowserSession
 from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum,ReplyTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
-
+import base64
 app = FastAPI()
 load_dotenv()
 
@@ -145,6 +145,30 @@ def convert_ws_url(original_url: str) -> str:
         f"/v1/browsers/devtools/browser/{uuid_part}"
     )
     return new_url
+
+async def get_data_files(directory: str | Path) -> List[Dict[str, str]]:
+    path = Path(directory)
+    if not path.is_dir():
+        raise ValueError(f"'{directory}' is not a valid directory")
+    result = []
+    for file in path.iterdir():
+        if file.is_file():
+            try:
+                with open(file, 'rb') as f:
+                    content = f.read()
+                base64_encoded = base64.b64encode(content).decode('ascii')
+                result.append({
+                    "name": file.name,
+                    "content": base64_encoded
+                })
+            except Exception as e:
+                result.append({
+                    "name": file.name,
+                    "content": f"[ERROR READING FILE: {str(e)}]".encode()
+                })
+    
+    return result
+
 async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEData, None]:
     task_id = str(uuid.uuid4())
     event_queue = asyncio.Queue(maxsize=100)
@@ -347,14 +371,15 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                     reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.TXT,reply_type=ReplyTypeInReplyEnum.ANSWER)
                 )
                 yield completion_event
-        # if ctx.upload_service:
-        #     for f in file_system.list_files():
-        #         logging.info(f"file name: {f}")
-        #         file_obj = file_system.get_file(f)
-        #         if file_obj:
-        #             file_content = file_obj.read()
-        #             file_new_name = f'{task_id}/{f}'
-        #             await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
+        if ctx.upload_service:
+            try:
+                fileList = await get_data_files(file_system.get_dir())
+                for file in fileList:
+                    file_content = await file_system.read_file(file_system_path+'/browseruse_agent_data/'+ file['name'])
+                    file_new_name = f'{task_id}/{file["name"]}'
+                    await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
+            except Exception as e:
+                logging.error(f"[{task_id}] Error in upload file: {e}")
 
         logging.info(f"[{task_id}] Task completed successfully")
 

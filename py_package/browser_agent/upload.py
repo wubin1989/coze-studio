@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List,Optional
+from typing import List
 from abc import ABC, abstractmethod
 from pydantic import BaseModel
 class FileItem(BaseModel):
@@ -13,8 +13,7 @@ class FileItem(BaseModel):
     update_time: int
 
 class UploadService(BaseModel,ABC):
-    headers:Optional[dict[str,str]] = {}
-    async def upload_file(self,file_content:str,file_name:str):
+    async def upload_file(self,headers:dict[str,str],file_content:str,file_name:str):
         pass
     async def list_file(self,headers:dict[str,str])->List[FileItem]:
         pass
