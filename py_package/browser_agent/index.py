@@ -37,10 +37,9 @@ from browser_use.agent.views import (
 )
 from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
-from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum
+from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum,ReplyTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
-from playwright.async_api import async_playwright
 
 app = FastAPI()
 load_dotenv()
@@ -150,7 +149,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
     task_id = str(uuid.uuid4())
     event_queue = asyncio.Queue(maxsize=100)
     base_tmp = tempfile.gettempdir()  # e.g., /tmp on Unix
-    file_system_path = os.path.join(base_tmp, f'browser_use_agent_666')
+    file_system_path = os.path.join(base_tmp, f'browser_use_agent_{task_id}')
     file_system = FileSystem(base_dir=file_system_path)
     # 初始化日志
     logging.info(f"RunBrowserUseAgent with query: {ctx.query},task_id:{task_id}")
@@ -214,7 +213,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
         browser_profile = BrowserProfile(
             headless=headless,
             disable_security=True,
-            highlight_elements=True,
+            highlight_elements=False,
             wait_between_actions=1,
             
             headers={
@@ -330,9 +329,21 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                      if hasattr(item, "extracted_content")]
                     for history_item in result.history
                 ]
+                result_str = "\n".join(
+                    item
+                    for sublist in final_result
+                    for item in sublist
+                    if isinstance(item, str)
+                )
+                logging.info(f"[{task_id}] final_result: {final_result}")
                 completion_event = genSSEData(
                     stream_id=task_id,
-                    content= 'done'
+                    content= result_str,
+                    return_type=ReturnTypeEnum.MODEL,
+                    response_for_model=result_str,
+                    content_type=ContentTypeEnum.TEXT,
+                    output_mode=OutputModeEnum.NOT_STREAM,
+                    reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.TXT,reply_type=ReplyTypeInReplyEnum.ANSWER)
                 )
                 yield completion_event
 
