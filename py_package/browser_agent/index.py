@@ -375,7 +375,7 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             try:
                 fileList = await get_data_files(file_system.get_dir())
                 for file in fileList:
-                    file_content = await file_system.read_file(file_system_path+'/browseruse_agent_data/'+ file['name'])
+                    file_content = await file_system.read_file(file_system_path+'/browseruse_agent_data/'+ file['name'],external_file=True)
                     file_new_name = f'{task_id}/{file["name"]}'
                     await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
             except Exception as e:
