@@ -18,3 +18,6 @@ class UploadService(BaseModel,ABC):
         pass
     async def list_file(self)->List[FileItem]:
         pass
+    
+async def filter_file_by_time(file_list:List[FileItem],start_time:int)->List[FileItem]:
+    return [file for file in file_list if (start_time <= file.create_time or start_time <= file.update_time) ]

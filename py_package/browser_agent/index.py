@@ -40,7 +40,10 @@ from browser_use import Agent, BrowserProfile, BrowserSession
 from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum,ReplyTypeInReplyEnum
 from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
+from browser_agent.upload import filter_file_by_time
+from stream_helper.schema import FileChangeInfo,FileChangeType,FileChangeData
 import base64
+import datetime
 app = FastAPI()
 load_dotenv()
 
@@ -94,6 +97,7 @@ class RunBrowserUseAgentCtx(BaseModel):
     max_steps: int = 20
     system_prompt: str | None = None
     upload_service:Optional[UploadService] = None
+    start_time:int = int(datetime.now().timestamp() * 1000)
     
 def genSSEData(stream_id:str,
                content:str,
@@ -264,17 +268,6 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                 file_name = ''
                 if action_name == 'wait_for_login':
                     islogin = True
-                if action_name == 'write_file':
-                    content = action_data[action_name]['content']
-                    file_name = f'{task_id}/{action_data[action_name]["file_name"]}'
-                if action_name == 'replace_file_str':
-                    file_name = f'{task_id}/{action_data[action_name]["file_name"]}'
-                    file_obj = file_system.get_file({action_data[action_name]["file_name"]})
-                    origin_content = file_obj.read()
-                    content = origin_content.replace(action_data[action_name]["old_str"], action_data[action_name]["new_str"])
-                if ctx.upload_service:
-                    if action_name == 'write_file' or action_name == 'replace_file_str':
-                        await ctx.upload_service.upload_file(file_content=content,file_name=file_name)
             data = ''
             content_type = ContentTypeInReplyEnum.TXT
             if islogin:
@@ -334,7 +327,38 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
         # 等待 Agent 任务完成
         if agent_task and not agent_task.done():
             await agent_task
-
+        if ctx.upload_service:
+            try:
+                fileList = await get_data_files(file_system.get_dir())
+                for file in fileList:
+                    file_content = await file_system.read_file(file_system_path+'/browseruse_agent_data/'+ file['name'],external_file=True)
+                    file_new_name = f'{task_id}/{file["name"]}'
+                    await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
+            except Exception as e:
+                logging.error(f"[{task_id}] Error in upload file: {e}")
+            try:
+                file_items = await ctx.upload_service.list_file()
+                file_change_info = FileChangeInfo(file_change_list=[],err_list=[])
+                file_items =await filter_file_by_time(file_items,ctx.start_time)
+                if len(file_items) > 0:
+                    for file_item in file_items:
+                        change_type = FileChangeType.CREATE
+                        if file_item.create_time != file_item.update_time:
+                            change_type = FileChangeType.UPDATE
+                        file_change_info.file_change_list.append(FileChangeData(
+                            file_name= file_item.file_name,
+                            change_type=change_type,
+                            uri= file_item.file_uri,
+                            url= file_item.file_url,
+                        ))
+                    logging.info(f"filter file by time success, file_change_info: {file_change_info.model_dump_json()}")
+                    file_pack = SSEData(
+                        stream_id=ctx.conversation_id,
+                        reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.FILE_CHANGE_INFO),
+                        content = file_change_info.model_dump_json())
+                    yield file_pack
+            except Exception as e:
+                logging.error(f"[{task_id}] Error in get file change info: {e}")
         # 获取最终结果
         result = await agent_task if agent_task else None
         if result:
@@ -367,19 +391,13 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
                     return_type=ReturnTypeEnum.MODEL,
                     response_for_model=final_result,
                     content_type=ContentTypeEnum.TEXT,
-                    output_mode=OutputModeEnum.NOT_STREAM,
+                    output_mode=OutputModeEnum.STREAM,
+                    is_finish= True,
+                    is_last_msg=True,
+                    is_last_packet_in_msg=True,
                     reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.TXT,reply_type=ReplyTypeInReplyEnum.ANSWER)
                 )
                 yield completion_event
-        if ctx.upload_service:
-            try:
-                fileList = await get_data_files(file_system.get_dir())
-                for file in fileList:
-                    file_content = await file_system.read_file(file_system_path+'/browseruse_agent_data/'+ file['name'],external_file=True)
-                    file_new_name = f'{task_id}/{file["name"]}'
-                    await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
-            except Exception as e:
-                logging.error(f"[{task_id}] Error in upload file: {e}")
 
         logging.info(f"[{task_id}] Task completed successfully")
 
