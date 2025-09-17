@@ -403,7 +403,13 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
         logging.error(f"[{task_id}] Agent execution failed: {e}")
         yield genSSEData(
             stream_id=ctx.conversation_id,
-            content=str(e),
+            content=f'err:{e}',
+            is_finish=True,
+            is_last_msg=True,
+            is_last_packet_in_msg=True,
+            return_type=ReturnTypeEnum.MODEL,
+            response_for_model=f'err:{e}',
+            reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.TXT,reply_type=ReplyTypeInReplyEnum.ANSWER)
         )
 
 
