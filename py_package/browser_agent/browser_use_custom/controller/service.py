@@ -11,6 +11,9 @@
 
 import logging
 import asyncio
+import re
+import markdownify
+from bs4 import BeautifulSoup
 from typing import Optional
 from browser_use.browser import BrowserSession
 from browser_use.controller.views import SearchGoogleAction
@@ -18,11 +21,15 @@ from browser_use.agent.views import ActionResult
 from browser_use.controller.service import Controller
 from playwright.async_api import Page
 from pydantic import BaseModel,Field
-
+from langchain_core.language_models.chat_models import BaseChatModel
 from browser_agent.browser_use_custom.i18n import _
+from langchain_core.prompts import PromptTemplate
 
 logger = logging.getLogger(__name__)
 
+class PauseAction(BaseModel):
+    reason: str
+    
 class WaitForLoginAction(BaseModel):
     """Action parameters for waiting for login completion."""
     timeout: int = Field(
@@ -61,6 +68,59 @@ class MyController(Controller):
             await page.goto(search_url)
             await page.wait_for_load_state()
             msg = _('🔍 Searched for "{query}" in Baidu').format(query=params.query)
+            logger.info(msg)
+            return ActionResult(extracted_content=msg, include_in_memory=True)
+        # Content Actions
+        @self.registry.action(
+            _('Extract page content to retrieve specific information from the page, e.g. all company names, a specific description, all information about xyc, 4 links with companies in structured format. Use include_links true if the goal requires links'),
+        )
+        async def extract_content(
+            goal: str,
+            page: Page,
+            page_extraction_llm: BaseChatModel,
+            include_links: bool = False,
+        ):
+            raw_content = await page.content()
+            soup = BeautifulSoup(
+                raw_content, 'html.parser')
+            # remove all unnecessary http metadata
+            for s in soup.select('script'):
+                s.decompose()
+            for s in soup.select('style'):
+                s.decompose()
+            for s in soup.select('textarea'):
+                s.decompose()
+            for s in soup.select('img'):
+                s.decompose()
+            for s in soup.find_all(style=re.compile("background-image.*")):
+                s.decompose()
+            content = markdownify.markdownify(str(soup))
+
+            # manually append iframe text into the content so it's readable by the LLM (includes cross-origin iframes)
+            for iframe in page.frames:
+                if iframe.url != page.url and not iframe.url.startswith('data:'):
+                    content += f'\n\nIFRAME {iframe.url}:\n'
+                    content += markdownify.markdownify(await iframe.content())
+
+            prompt = _('Your task is to extract the content of the page. You will be given a page and a goal and you should extract all relevant information around this goal from the page. If the goal is vague, summarize the page. Respond in json format. Extraction goal: {goal}, Page: {page}')
+            template = PromptTemplate(input_variables=['goal', 'page'], template=prompt)
+            try:
+                output = await page_extraction_llm.ainvoke(template.format(goal=goal, page=content))
+                msg = _('📄 Extracted from page\n: {content}\n').format(content=output.content)
+                logger.info(msg)
+                return ActionResult(extracted_content=msg, include_in_memory=True)
+            except Exception as e:
+                logger.debug(_('Error extracting content: {error}').format(error=e))
+                msg = _('📄 Extracted from page\n: {content}\n').format(content=content)
+                logger.info(msg)
+                return ActionResult(extracted_content=msg)
+        
+        @self.registry.action(
+            _('Pause agent'),
+            param_model=PauseAction,
+        )
+        async def pause(params: PauseAction):
+            msg = _('👩 Pause agent, reason: {reason}').format(reason=params.reason)
             logger.info(msg)
             return ActionResult(extracted_content=msg, include_in_memory=True)
         # Login detection and waiting action

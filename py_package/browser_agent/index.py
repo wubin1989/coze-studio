@@ -24,7 +24,6 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from browser_use.llm import ChatOpenAI
 from pydantic import BaseModel, Field
 from browser_use.browser.views import BrowserStateSummary
 from browser_agent.browser import start_local_browser,BrowserWrapper
@@ -35,14 +34,13 @@ from browser_agent.browser_use_custom.i18n import _, set_language
 from browser_use.agent.views import (
     AgentOutput,
 )
-from browser_use.llm.base import BaseChatModel
 from browser_use import Agent, BrowserProfile, BrowserSession
 from stream_helper.schema import SSEData,ContentTypeEnum,ReturnTypeEnum,OutputModeEnum,ContextModeEnum,MessageActionInfo,MessageActionItem,ReplyContentType,ContentTypeInReplyEnum,ReplyTypeInReplyEnum
-from browser_use.filesystem.file_system import FileSystem
 from browser_agent.upload import UploadService
 from browser_agent.upload import filter_file_by_time
 from stream_helper.schema import FileChangeInfo,FileChangeType,FileChangeData
 import base64
+from langchain_core.language_models.chat_models import BaseChatModel
 from datetime import datetime
 app = FastAPI()
 load_dotenv()
@@ -96,6 +94,7 @@ class RunBrowserUseAgentCtx(BaseModel):
     browser_session_endpoint: str
     max_steps: int = 20
     system_prompt: str | None = None
+    extend_prompt: str | None = None
     upload_service:Optional[UploadService] = None
     start_time:int = int(datetime.now().timestamp() * 1000)
     
@@ -177,8 +176,6 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
     task_id = str(uuid.uuid4())
     event_queue = asyncio.Queue(maxsize=100)
     base_tmp = tempfile.gettempdir()  # e.g., /tmp on Unix
-    file_system_path = os.path.join(base_tmp, f'browser_use_agent_{task_id}')
-    file_system = FileSystem(base_dir=file_system_path)
     # 初始化日志
     logging.info(f"RunBrowserUseAgent with query: {ctx.query},task_id:{task_id}")
     
@@ -289,9 +286,9 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
             use_vision=os.getenv("ARK_USE_VISION", "False").lower() == "true",
             use_vision_for_planner=os.getenv("ARK_USE_VISION", "False").lower() == "true",
             page_extraction_llm=ctx.llm,
-            file_system_path=file_system_path,
             controller=MyController(),
             override_system_message=ctx.system_prompt,
+            extend_planner_system_message=ctx.extend_prompt,
         )
 
         logging.info(f"[{task_id}] Agent initialized and ready to run")
@@ -325,38 +322,6 @@ async def RunBrowserUseAgent(ctx: RunBrowserUseAgentCtx) -> AsyncGenerator[SSEDa
         # 等待 Agent 任务完成
         if agent_task and not agent_task.done():
             await agent_task
-        if ctx.upload_service:
-            try:
-                fileList = await get_data_files(file_system.get_dir())
-                for file in fileList:
-                    file_content = await file_system.read_file(file_system_path+'/browseruse_agent_data/'+ file['name'],external_file=True)
-                    file_new_name = f'{task_id}/{file["name"]}'
-                    await ctx.upload_service.upload_file(file_content=file_content,file_name=file_new_name)
-            except Exception as e:
-                logging.error(f"[{task_id}] Error in upload file: {e}")
-            try:
-                file_items = await ctx.upload_service.list_file()
-                file_change_info = FileChangeInfo(file_change_list=[],err_list=[])
-                file_items =await filter_file_by_time(file_items,ctx.start_time)
-                if len(file_items) > 0:
-                    for file_item in file_items:
-                        change_type = FileChangeType.CREATE
-                        if file_item.create_time != file_item.update_time:
-                            change_type = FileChangeType.UPDATE
-                        file_change_info.file_change_list.append(FileChangeData(
-                            file_name= file_item.file_name,
-                            change_type=change_type,
-                            uri= file_item.file_uri,
-                            url= file_item.file_url,
-                        ))
-                    logging.info(f"filter file by time success, file_change_info: {file_change_info.model_dump_json()}")
-                    file_pack = SSEData(
-                        stream_id=ctx.conversation_id,
-                        reply_content_type=ReplyContentType(content_type=ContentTypeInReplyEnum.FILE_CHANGE_INFO,reply_type=ReplyTypeInReplyEnum.ANSWER),
-                        content = file_change_info.model_dump_json())
-                    yield file_pack
-            except Exception as e:
-                logging.error(f"[{task_id}] Error in get file change info: {e}")
         # 获取最终结果
         result = await agent_task if agent_task else None
         if result:

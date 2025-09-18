@@ -4,8 +4,7 @@ from typing import AsyncGenerator,Dict,Optional
 from abc import ABC, abstractmethod
 from datetime import datetime
 from stream_helper.schema import SSEData
-from browser_use.llm.base import BaseChatModel
-
+from langchain_core.language_models.chat_models import BaseChatModel
 class BrowserAgentBase(BaseModel,ABC):
     query: str
     conversation_id: str = ''
