@@ -18,10 +18,11 @@ package parsex
 
 import (
 	"fmt"
-	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/coze-dev/coze-studio/backend/pkg/logs"
 )
 
 // ParseClusterEndpoints 解析 ES /kafka 地址，多个地址用逗号分隔
